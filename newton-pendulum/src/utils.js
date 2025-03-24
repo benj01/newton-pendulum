@@ -1,17 +1,43 @@
-// utils.js - Utility functions for the Newton's Cradle simulation
+// utils.js - Helper functions and utilities
 
-import * as THREE from 'three';
+// Add info text to the DOM
+export function addInfoText() {
+  // Main info div
+  const infoDiv = document.createElement('div');
+  infoDiv.id = 'info';
+  infoDiv.innerHTML = 'Newton\'s Cradle - Click to start animation | Click and drag to rotate view | Scroll to zoom | Press R to reset camera';
+  infoDiv.style.position = 'absolute';
+  infoDiv.style.top = '10px';
+  infoDiv.style.width = '100%';
+  infoDiv.style.textAlign = 'center';
+  infoDiv.style.color = 'white';
+  infoDiv.style.fontFamily = 'system-ui, sans-serif';
+  infoDiv.style.padding = '5px';
+  infoDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  infoDiv.style.zIndex = '100';
+  document.body.appendChild(infoDiv);
+  
+  // Mobile info div
+  const mobileInfo = document.createElement('div');
+  mobileInfo.style.position = 'absolute';
+  mobileInfo.style.bottom = '10px';
+  mobileInfo.style.left = '10px';
+  mobileInfo.style.color = 'white';
+  mobileInfo.style.fontFamily = 'system-ui, sans-serif';
+  mobileInfo.style.padding = '10px';
+  mobileInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  mobileInfo.style.borderRadius = '5px';
+  mobileInfo.style.zIndex = '100';
+  mobileInfo.innerHTML = 'One finger: Rotate<br>Two fingers: Zoom';
+  document.body.appendChild(mobileInfo);
+}
 
-/**
- * Convert degrees to radians
- */
+// Convert degrees to radians
 export function degToRad(degrees) {
   return degrees * Math.PI / 180;
 }
 
-/**
- * Calculate point on screen from 3D position
- */
+// Get screen position from 3D position
 export function getScreenPosition(position, camera, renderer) {
   const vector = position.clone();
   const widthHalf = renderer.domElement.width / 2;
@@ -28,9 +54,7 @@ export function getScreenPosition(position, camera, renderer) {
   };
 }
 
-/**
- * Create a FPS counter for performance monitoring
- */
+// Create a FPS counter for performance monitoring
 export function createFPSCounter() {
   const container = document.createElement('div');
   container.style.position = 'absolute';
@@ -70,9 +94,7 @@ export function createFPSCounter() {
   return container;
 }
 
-/**
- * Debounce function to limit function calls
- */
+// Debounce function to limit function calls
 export function debounce(func, wait) {
   let timeout;
   
@@ -85,92 +107,4 @@ export function debounce(func, wait) {
     clearTimeout(timeout);
     timeout = setTimeout(later, wait);
   };
-}
-
-/**
- * Detect raycaster intersections with objects
- */
-export function getIntersections(mouse, camera, objects) {
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(mouse, camera);
-  return raycaster.intersectObjects(objects);
-}
-
-/**
- * Calculate a 3D position from mouse coordinates and a plane
- */
-export function get3DPositionOnPlane(mouse, camera, planeY = 0) {
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(mouse, camera);
-  
-  // Create an invisible horizontal plane at the specified Y coordinate
-  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
-  
-  // Get intersection point
-  const point = new THREE.Vector3();
-  raycaster.ray.intersectPlane(plane, point);
-  
-  return point;
-}
-
-/**
- * Create a drag plane based on camera view
- */
-export function createDragPlane(camera, targetPoint) {
-  // Create a plane that faces the camera and passes through the target point
-  const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
-  return new THREE.Plane(normal, -normal.dot(targetPoint));
-}
-
-/**
- * Calculate intersection point with a plane
- */
-export function getIntersectionWithPlane(ray, plane) {
-  const point = new THREE.Vector3();
-  ray.intersectPlane(plane, point);
-  return point;
-}
-
-/**
- * Add helper text to the scene
- */
-export function createHelpText() {
-  const helpDiv = document.createElement('div');
-  helpDiv.style.position = 'absolute';
-  helpDiv.style.bottom = '20px';
-  helpDiv.style.left = '20px';
-  helpDiv.style.color = 'white';
-  helpDiv.style.backgroundColor = 'rgba(0,0,0,0.5)';
-  helpDiv.style.padding = '10px';
-  helpDiv.style.borderRadius = '5px';
-  helpDiv.style.fontFamily = 'Arial, sans-serif';
-  helpDiv.style.fontSize = '14px';
-  helpDiv.style.zIndex = '100';
-  helpDiv.style.pointerEvents = 'none'; // Makes it click-through
-  
-  helpDiv.innerHTML = `
-    <p><strong>Newton's Cradle Controls:</strong></p>
-    <p>• Click and drag a ball to move it</p>
-    <p>• Release to let physics take over</p>
-    <p>• Mouse wheel to zoom in/out</p>
-    <p>• Right-click drag to rotate view</p>
-  `;
-  
-  document.body.appendChild(helpDiv);
-  
-  return helpDiv;
-}
-
-/**
- * Normalize value between min and max to 0-1 range
- */
-export function normalize(value, min, max) {
-  return (value - min) / (max - min);
-}
-
-/**
- * Clamp value between min and max
- */
-export function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
 }
