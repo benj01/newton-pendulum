@@ -22,6 +22,16 @@ let ballBodies = [];
 let frameBodies = [];
 let constraints = [];
 
+// Export physics instance
+export function getPhysics() {
+  return physics;
+}
+
+// Export ball bodies for interaction
+export function getBallBodies() {
+  return ballBodies;
+}
+
 // Initialize Ammo.js physics
 export async function initPhysics() {
   // Create a loading message
@@ -70,7 +80,7 @@ export async function initPhysics() {
     // Remove loading message
     document.body.removeChild(loadingMsg);
     
-    return physicsWorld;
+    return { physicsWorld, physics };
   } catch (error) {
     console.error('Error initializing Ammo.js:', error);
     loadingMsg.textContent = `Error loading physics engine: ${error.message}`;
@@ -82,6 +92,11 @@ export async function initPhysics() {
 
 // Create physics bodies for the cradle
 export function createPhysicsBodies(cradle) {
+  // Clear any existing bodies
+  ballBodies = [];
+  frameBodies = [];
+  constraints = [];
+  
   // Create frame bodies
   for (let i = 0; i < cradle.frame.length; i++) {
     const frameObject = cradle.frame[i];
@@ -291,9 +306,4 @@ export function applyImpulse(ballIndex, impulseVector) {
     // Make sure the body is active
     body.activate();
   }
-}
-
-// Get all ball bodies (for external use)
-export function getBallBodies() {
-  return ballBodies;
 }

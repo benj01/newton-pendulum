@@ -1,9 +1,8 @@
 // scene.js - Three.js scene setup and visual elements
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 // Scene variables
-let scene, camera, renderer, controls;
+let scene, camera, renderer;
 let balls = [];
 let strings = [];
 let frame;
@@ -28,23 +27,18 @@ export function initScene() {
   // Create camera
   camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 8, 20);
+  camera.lookAt(0, 5, 0);
   
   // Create renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer = new THREE.WebGLRenderer({ 
+    antialias: true
+  });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  document.body.appendChild(renderer.domElement);
   
-  // Add orbit controls
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
-  controls.minDistance = 5;
-  controls.maxDistance = 50;
-  controls.maxPolarAngle = Math.PI / 1.5;
-  controls.target.set(0, 5, 0);
-  controls.update();
+  // Add renderer to document
+  document.body.appendChild(renderer.domElement);
   
   // Set up lighting
   setupLighting();
@@ -52,8 +46,7 @@ export function initScene() {
   return {
     scene,
     camera,
-    renderer,
-    controls
+    renderer
   };
 }
 
@@ -230,8 +223,7 @@ function updateStrings() {
 
 // Update scene elements (for animation loop)
 export function updateScene() {
-  // Update controls
-  controls.update();
+  if (!renderer || !scene || !camera) return;
   
   // Update strings to follow balls
   updateStrings();
@@ -242,6 +234,8 @@ export function updateScene() {
 
 // Handle window resize
 export function onWindowResize(camera, renderer) {
+  if (!camera || !renderer) return;
+  
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -253,15 +247,8 @@ export function getSceneObjects() {
     scene,
     camera,
     renderer,
-    controls,
     balls,
     strings,
     frameObjects
   };
-}
-
-// Animation loop
-export function animate() {
-  requestAnimationFrame(animate);
-  updateScene(); // Ensure OrbitControls and other updates are applied
 }

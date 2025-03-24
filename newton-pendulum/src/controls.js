@@ -1,80 +1,96 @@
-// Updated controls.js with ball dragging functionality
+// Updated controls.js with enhanced mobile touch support
 import * as THREE from 'three';
-import { applyImpulse } from './physics.js';
+import { applyImpulse, getBallBodies } from './physics.js';
 
 // Controls variables
-let camera, renderer, orbitControls, scene;
-let animationStarted = false;
+let camera, renderer, scene;
 let isDragging = false;
 let selectedBall = null;
-let mouseConstraint = null;
+let selectedBallIndex = -1;
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
 let dragPlane = new THREE.Plane();
 let dragPoint = new THREE.Vector3();
 let physicsWorld = null;
 let physics = null;
+let startAnimationCallback = null;
+let lastDragPosition = null;
+
+// Track for velocity calculation
+let lastDragTime = 0;
+let lastDragPositions = [];
 
 // Setup controls for the scene
-export function setupControls(sceneCamera, sceneRenderer, sceneControls, sceneObj, physicsObj, ammoObj) {
+export function setupControls(sceneCamera, sceneRenderer, sceneObj, physicsObj, ammoObj, startAnimationCb) {
   camera = sceneCamera;
   renderer = sceneRenderer;
-  orbitControls = sceneControls;
   scene = sceneObj;
   physicsWorld = physicsObj;
   physics = ammoObj;
-}
+  startAnimationCallback = startAnimationCb;
 
-// Setup event listeners for user interaction
-export function setupEventListeners(cradle, startAnimationCallback, resetCameraCallback, sceneObjects) {
-  // Mouse event listeners for ball dragging
-  renderer.domElement.addEventListener('mousedown', onMouseDown);
-  window.addEventListener('mousemove', onMouseMove);
-  window.addEventListener('mouseup', onMouseUp);
-  
-  // Touch event listeners for mobile
-  renderer.domElement.addEventListener('touchstart', onTouchStart);
-  window.addEventListener('touchmove', onTouchMove);
-  window.addEventListener('touchend', onTouchEnd);
-  
-  // Use sceneObjects.renderer.domElement for the click event listener
-  sceneObjects.renderer.domElement.addEventListener('click', (event) => {
-    // Only trigger animation on click if we're not dragging a ball
-    if (!isDragging && !animationStarted) {
-      animationStarted = true;
-      startAnimationCallback();
-    }
-  });
-  
-  // Key events for animation and camera control
-  window.addEventListener('keydown', (event) => {
-    // Space bar to start animation
-    if (event.code === 'Space') {
-      if (!animationStarted) {
-        animationStarted = true;
+  // Initialize raycaster and vectors
+  raycaster = new THREE.Raycaster();
+  mouse = new THREE.Vector2();
+  dragPlane = new THREE.Plane();
+  dragPoint = new THREE.Vector3();
+
+  if (renderer && renderer.domElement) {
+    const element = renderer.domElement;
+    
+    // Remove previous event listeners if they exist
+    element.removeEventListener('mousedown', onMouseDown);
+    element.removeEventListener('touchstart', onTouchStart);
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('touchmove', onTouchMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    window.removeEventListener('touchend', onTouchEnd);
+    
+    // Add mouse event listeners
+    element.addEventListener('mousedown', onMouseDown, { passive: false });
+    window.addEventListener('mousemove', onMouseMove, { passive: false });
+    window.addEventListener('mouseup', onMouseUp, { passive: false });
+    
+    // Add touch event listeners for mobile with passive: false to allow preventDefault
+    element.addEventListener('touchstart', onTouchStart, { passive: false });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd, { passive: false });
+
+    // Add key events for animation
+    window.addEventListener('keydown', (event) => {
+      if (event.code === 'Space' && startAnimationCallback) {
+        event.preventDefault();
         startAnimationCallback();
       }
-    }
-    
-    // R key to reset camera position
-    if (event.code === 'KeyR') {
-      resetCameraCallback();
-    }
-    
-    // D key for debugging output
-    if (event.code === 'KeyD') {
-      console.log('Camera position:', camera.position);
-      console.log('Controls target:', orbitControls.target);
-      
-      // Log ball positions if available
-      if (cradle && cradle.balls) {
-        console.log('Ball positions:');
-        cradle.balls.forEach((ball, index) => {
-          console.log(`Ball ${index}:`, ball.position);
-        });
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      if (camera && renderer) {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
       }
-    }
-  });
+    });
+
+    // Add a double-tap handler for mobile to trigger animation
+    let lastTap = 0;
+    element.addEventListener('touchend', (event) => {
+      const currentTime = new Date().getTime();
+      const tapLength = currentTime - lastTap;
+      
+      if (tapLength < 300 && tapLength > 0 && !isDragging && startAnimationCallback) {
+        event.preventDefault();
+        startAnimationCallback();
+      }
+      
+      lastTap = currentTime;
+    }, { passive: false });
+
+    console.log('Ball interaction controls setup complete with enhanced mobile support');
+  } else {
+    console.error('Renderer or domElement not available for event listeners');
+  }
 }
 
 // Mouse down event handler
@@ -92,6 +108,28 @@ function onMouseDown(event) {
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
   
+  selectBall();
+}
+
+// Touch start event handler
+function onTouchStart(event) {
+  // Prevent default behavior to avoid scrolling/zooming
+  event.preventDefault();
+  
+  if (event.touches.length === 1) {
+    // Get the first touch
+    const touch = event.touches[0];
+    
+    // Calculate touch position in normalized device coordinates (-1 to +1)
+    mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+    
+    selectBall();
+  }
+}
+
+// Common function to select a ball based on current mouse/touch position
+function selectBall() {
   // Get balls from the scene
   const balls = scene.children.filter(obj => obj.geometry && obj.geometry.type === 'SphereGeometry');
   
@@ -102,11 +140,12 @@ function onMouseDown(event) {
   const intersects = raycaster.intersectObjects(balls);
   
   if (intersects.length > 0) {
-    // Disable orbit controls temporarily
-    orbitControls.enabled = false;
-    
     // Set selected ball
     selectedBall = intersects[0].object;
+    
+    // Find ball index
+    selectedBallIndex = balls.findIndex(ball => ball.uuid === selectedBall.uuid);
+    
     isDragging = true;
     
     // Set up drag plane aligned with the camera view
@@ -118,91 +157,158 @@ function onMouseDown(event) {
     // Calculate drag point (intersection of ray with drag plane)
     raycaster.ray.intersectPlane(dragPlane, dragPoint);
     
-    // Create physics constraint
-    createMouseConstraint(selectedBall, dragPoint);
+    // Reset drag tracking
+    lastDragPosition = dragPoint.clone();
+    lastDragTime = performance.now();
+    lastDragPositions = [];
+    
+    // Create physics constraint for dragging
+    createMouseConstraint(selectedBallIndex, dragPoint);
+    
+    console.log('Ball selected:', {
+      ballIndex: selectedBallIndex,
+      ballPosition: selectedBall.position.toArray(),
+      dragPoint: dragPoint.toArray()
+    });
   }
 }
 
 // Mouse move event handler
 function onMouseMove(event) {
   if (isDragging && selectedBall) {
+    event.preventDefault();
+    
     // Calculate mouse position in normalized device coordinates (-1 to +1)
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     
-    // Update the picking ray with the camera and mouse position
-    raycaster.setFromCamera(mouse, camera);
-    
-    // Calculate new drag point (intersection of ray with drag plane)
-    raycaster.ray.intersectPlane(dragPlane, dragPoint);
-    
-    // Update the mouse constraint target position
-    updateMouseConstraint(dragPoint);
+    updateDragPosition();
   }
+}
+
+// Touch move event handler
+function onTouchMove(event) {
+  if (isDragging && selectedBall && event.touches.length === 1) {
+    event.preventDefault();
+    
+    // Get the first touch
+    const touch = event.touches[0];
+    
+    // Calculate touch position in normalized device coordinates (-1 to +1)
+    mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+    
+    updateDragPosition();
+  }
+}
+
+// Common function to update drag position based on current mouse/touch position
+function updateDragPosition() {
+  // Update the picking ray with the camera and mouse position
+  raycaster.setFromCamera(mouse, camera);
+  
+  // Calculate new drag point (intersection of ray with drag plane)
+  raycaster.ray.intersectPlane(dragPlane, dragPoint);
+  
+  // Store position and time for velocity calculation
+  const now = performance.now();
+  lastDragPositions.push({
+    position: dragPoint.clone(),
+    time: now
+  });
+  
+  // Keep only the last 5 positions for smoothing
+  if (lastDragPositions.length > 5) {
+    lastDragPositions.shift();
+  }
+  
+  // Update the mouse constraint target position
+  updateMouseConstraint(dragPoint);
 }
 
 // Mouse up event handler
 function onMouseUp(event) {
   if (isDragging) {
-    // Re-enable orbit controls
-    orbitControls.enabled = true;
-    
-    // Release the constraint
-    releaseMouseConstraint();
-    
-    // Reset drag state
-    isDragging = false;
-    selectedBall = null;
+    event.preventDefault();
+    releaseConstraint();
   }
 }
 
-// Touch event handlers for mobile support
-function onTouchStart(event) {
-  // Prevent default behavior
-  event.preventDefault();
-  
-  // Convert touch to mouse event
-  const touch = event.touches[0];
-  const mouseEvent = {
-    clientX: touch.clientX,
-    clientY: touch.clientY,
-    preventDefault: () => {}
-  };
-  
-  onMouseDown(mouseEvent);
-}
-
-function onTouchMove(event) {
+// Touch end event handler
+function onTouchEnd(event) {
   if (isDragging) {
     event.preventDefault();
-    
-    const touch = event.touches[0];
-    const mouseEvent = {
-      clientX: touch.clientX,
-      clientY: touch.clientY
-    };
-    
-    onMouseMove(mouseEvent);
+    releaseConstraint();
   }
 }
 
-function onTouchEnd(event) {
-  onMouseUp(event);
+// Common function to handle constraint release
+function releaseConstraint() {
+  console.log('Ball released:', {
+    ballIndex: selectedBallIndex,
+    finalPosition: selectedBall ? selectedBall.position.toArray() : null
+  });
+  
+  // Apply velocity impulse when releasing the ball
+  if (selectedBallIndex >= 0 && lastDragPositions.length >= 2) {
+    // Calculate velocity from the last few positions
+    const first = lastDragPositions[0];
+    const last = lastDragPositions[lastDragPositions.length - 1];
+    
+    if (last.time - first.time > 0) {
+      const velocity = new THREE.Vector3();
+      velocity.subVectors(last.position, first.position);
+      
+      // Scale velocity based on time elapsed (convert to per-second)
+      const timeScale = 1000 / (last.time - first.time);
+      velocity.multiplyScalar(timeScale * 2); // Multiply by 2 for more responsive feel
+      
+      // Apply impulse based on calculated velocity
+      applyImpulse(selectedBallIndex, { 
+        x: velocity.x, 
+        y: velocity.y, 
+        z: velocity.z 
+      });
+      
+      console.log('Applied release velocity:', {
+        velocity: velocity.toArray(),
+        timeElapsed: last.time - first.time
+      });
+    }
+  }
+  
+  // Release the constraint
+  releaseMouseConstraint();
+  
+  // Reset drag state
+  isDragging = false;
+  selectedBall = null;
+  selectedBallIndex = -1;
+  lastDragPositions = [];
 }
 
+// Physics constraint variables
+let mouseBody = null;
+let mouseConstraint = null;
+
 // Create mouse constraint for dragging
-function createMouseConstraint(ball, position) {
-  // First, find the corresponding physics body
-  // This requires accessing the ballBodies array from physics.js
-  // For now, we'll just create a temporary reference
-  
+function createMouseConstraint(ballIndex, position) {
   if (!physics || !physicsWorld) {
     console.error('Physics not initialized for mouse constraint');
     return;
   }
   
   try {
-    // Create a temporary body for the mouse point
+    // Get ball body from physics
+    const ballBodies = getBallBodies();
+    if (ballIndex < 0 || ballIndex >= ballBodies.length) {
+      console.error('Invalid ball index:', ballIndex);
+      return;
+    }
+    
+    const ballBody = ballBodies[ballIndex];
+    
+    // Create a body for the mouse point
     const shape = new physics.btSphereShape(0.1);
     const transform = new physics.btTransform();
     transform.setIdentity();
@@ -218,7 +324,7 @@ function createMouseConstraint(ball, position) {
       shape,
       new physics.btVector3(0, 0, 0) // No inertia for static objects
     );
-    const mouseBody = new physics.btRigidBody(rbInfo);
+    mouseBody = new physics.btRigidBody(rbInfo);
     
     // Make it kinematic
     mouseBody.setCollisionFlags(mouseBody.getCollisionFlags() | 2); // CF_KINEMATIC_OBJECT
@@ -227,38 +333,24 @@ function createMouseConstraint(ball, position) {
     // Add to physics world
     physicsWorld.addRigidBody(mouseBody);
     
-    // Store the mouse body
-    mouseConstraint = {
+    // Create the constraint between ball and mouse position
+    const pivotInBall = new physics.btVector3(0, 0, 0);
+    const pivotInMouse = new physics.btVector3(0, 0, 0);
+    
+    mouseConstraint = new physics.btPoint2PointConstraint(
+      ballBody,
       mouseBody,
-      targetBody: null, // This should be set to the actual ball body
-      constraint: null,
-      originalPosition: ball.position.clone()
-    };
+      pivotInBall,
+      pivotInMouse
+    );
     
-    // IMPORTANT: We need to get the actual ball body from physics.js
-    // For now, just log that we need to implement this properly
-    console.log('Mouse constraint created, but needs to be connected to actual ball body');
+    // Set constraint parameters
+    mouseConstraint.setBreakingImpulseThreshold(3500); // High enough to not break easily
     
-    // This would be the ideal implementation, but requires accessing the ball bodies
-    // const ballIndex = getBallIndex(ball);
-    // if (ballIndex !== -1) {
-    //   const ballBody = getBallBodies()[ballIndex];
-    //   
-    //   // Create the constraint
-    //   const pivotInBall = new physics.btVector3(0, 0, 0);
-    //   const pivotInMouse = new physics.btVector3(0, 0, 0);
-    //   
-    //   const constraint = new physics.btPoint2PointConstraint(
-    //     ballBody,
-    //     mouseBody,
-    //     pivotInBall,
-    //     pivotInMouse
-    //   );
-    //   
-    //   physicsWorld.addConstraint(constraint, true);
-    //   mouseConstraint.targetBody = ballBody;
-    //   mouseConstraint.constraint = constraint;
-    // }
+    // Add constraint to physics world
+    physicsWorld.addConstraint(mouseConstraint, true);
+    
+    console.log('Mouse constraint created for ball', ballIndex);
   } catch (error) {
     console.error('Error creating mouse constraint:', error);
   }
@@ -266,7 +358,7 @@ function createMouseConstraint(ball, position) {
 
 // Update mouse constraint position
 function updateMouseConstraint(position) {
-  if (mouseConstraint && mouseConstraint.mouseBody) {
+  if (mouseBody && physics) {
     try {
       // Create transform for new position
       const transform = new physics.btTransform();
@@ -274,13 +366,8 @@ function updateMouseConstraint(position) {
       transform.setOrigin(new physics.btVector3(position.x, position.y, position.z));
       
       // Apply transform to mouse body
-      mouseConstraint.mouseBody.setWorldTransform(transform);
-      mouseConstraint.mouseBody.activate();
-      
-      // If we have a target body, activate it too
-      if (mouseConstraint.targetBody) {
-        mouseConstraint.targetBody.activate();
-      }
+      mouseBody.setWorldTransform(transform);
+      mouseBody.activate();
     } catch (error) {
       console.error('Error updating mouse constraint:', error);
     }
@@ -289,39 +376,23 @@ function updateMouseConstraint(position) {
 
 // Release mouse constraint
 function releaseMouseConstraint() {
-  if (mouseConstraint) {
+  if (mouseConstraint && physicsWorld) {
     try {
       // Remove constraint from physics world
-      if (mouseConstraint.constraint) {
-        physicsWorld.removeConstraint(mouseConstraint.constraint);
-      }
-      
-      // Remove mouse body from physics world
-      if (mouseConstraint.mouseBody) {
-        physicsWorld.removeRigidBody(mouseConstraint.mouseBody);
-      }
-      
-      // Clean up
+      physicsWorld.removeConstraint(mouseConstraint);
       mouseConstraint = null;
     } catch (error) {
-      console.error('Error releasing mouse constraint:', error);
+      console.error('Error removing constraint:', error);
     }
   }
-}
-
-// Reset animation state
-export function resetAnimation() {
-  animationStarted = false;
-}
-
-// Check if animation has started
-export function isAnimationStarted() {
-  return animationStarted;
-}
-
-// Get the index of a ball in the cradle
-function getBallIndex(ball) {
-  // This function would need to be implemented to find which physics body
-  // corresponds to the visual ball that was clicked
-  return -1; // Not implemented yet
+  
+  if (mouseBody && physicsWorld) {
+    try {
+      // Remove mouse body from physics world
+      physicsWorld.removeRigidBody(mouseBody);
+      mouseBody = null;
+    } catch (error) {
+      console.error('Error removing mouse body:', error);
+    }
+  }
 }

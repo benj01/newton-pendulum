@@ -5,7 +5,7 @@ export function addInfoText() {
   // Main info div
   const infoDiv = document.createElement('div');
   infoDiv.id = 'info';
-  infoDiv.innerHTML = 'Newton\'s Cradle - Click to start animation | Click and drag to rotate view | Scroll to zoom | Press R to reset camera';
+  infoDiv.innerHTML = 'Newton\'s Cradle - Click and drag balls to interact | Press SPACE to start animation';
   infoDiv.style.position = 'absolute';
   infoDiv.style.top = '10px';
   infoDiv.style.width = '100%';
@@ -28,7 +28,7 @@ export function addInfoText() {
   mobileInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
   mobileInfo.style.borderRadius = '5px';
   mobileInfo.style.zIndex = '100';
-  mobileInfo.innerHTML = 'One finger: Rotate<br>Two fingers: Zoom';
+  mobileInfo.innerHTML = 'Touch and drag balls to interact';
   document.body.appendChild(mobileInfo);
 }
 
