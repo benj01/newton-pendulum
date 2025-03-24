@@ -1,10 +1,10 @@
-// Replace the contents of src/main.js with this code
+// src/main.js - Fixed version with proper camera controls
 import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 // Global variables
-let camera, scene, renderer, physics;
+let camera, scene, renderer, controls, physics;
 let balls = [];
 let tmpTrans;
 let ballMaterial;
@@ -49,8 +49,62 @@ async function init() {
   // Start animation loop
   animate();
   
-  // Add click event listener to start animation
-  document.addEventListener('click', startAnimation);
+  // Add alternative event listeners to start animation and debug controls
+  renderer.domElement.addEventListener('click', startAnimation);
+  
+  // Add key controls for debugging
+  window.addEventListener('keydown', (event) => {
+    // Use space bar as alternative to start animation
+    if (event.code === 'Space') {
+      startAnimation();
+    }
+    
+    // Log camera position for debugging
+    if (event.code === 'KeyD') {
+      console.log('Camera position:', camera.position);
+      console.log('Controls target:', controls.target);
+    }
+    
+    // Reset camera position with R key
+    if (event.code === 'KeyR') {
+      camera.position.set(0, 8, 20);
+      controls.target.set(0, 5, 0);
+      controls.update();
+    }
+  });
+
+  // Add info text
+  addInfoText();
+}
+
+function addInfoText() {
+  const infoDiv = document.createElement('div');
+  infoDiv.id = 'info';
+  infoDiv.innerHTML = 'Newton\'s Cradle - Click to start animation | Click and drag to rotate view | Scroll to zoom | Press R to reset camera';
+  infoDiv.style.position = 'absolute';
+  infoDiv.style.top = '10px';
+  infoDiv.style.width = '100%';
+  infoDiv.style.textAlign = 'center';
+  infoDiv.style.color = 'white';
+  infoDiv.style.fontFamily = 'system-ui, sans-serif';
+  infoDiv.style.padding = '5px';
+  infoDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  infoDiv.style.zIndex = '100';
+  document.body.appendChild(infoDiv);
+  
+  // Add controls help for mobile
+  const mobileInfo = document.createElement('div');
+  mobileInfo.style.position = 'absolute';
+  mobileInfo.style.bottom = '10px';
+  mobileInfo.style.left = '10px';
+  mobileInfo.style.color = 'white';
+  mobileInfo.style.fontFamily = 'system-ui, sans-serif';
+  mobileInfo.style.padding = '10px';
+  mobileInfo.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  mobileInfo.style.borderRadius = '5px';
+  mobileInfo.style.zIndex = '100';
+  mobileInfo.innerHTML = 'One finger: Rotate<br>Two fingers: Zoom';
+  document.body.appendChild(mobileInfo);
 }
 
 async function initPhysics() {
@@ -108,22 +162,27 @@ async function initPhysics() {
 
 function createScene() {
   // Create camera
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 5, 15);
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 8, 20); // Position further back and higher
   
   // Create scene
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x242424);
+  scene.background = new THREE.Color(0x444444); // Lighter background
   
-  // Add ambient light
-  const ambientLight = new THREE.AmbientLight(0x707070);
+  // Add stronger ambient light
+  const ambientLight = new THREE.AmbientLight(0x909090);
   scene.add(ambientLight);
   
   // Add directional light
-  const light = new THREE.DirectionalLight(0xffffff, 1);
+  const light = new THREE.DirectionalLight(0xffffff, 1.2);
   light.position.set(0, 10, 10);
   light.castShadow = true;
   scene.add(light);
+  
+  // Add an additional light from the front
+  const frontLight = new THREE.DirectionalLight(0xffffff, 0.7);
+  frontLight.position.set(0, 5, 15);
+  scene.add(frontLight);
   
   // Configure shadows
   light.shadow.camera.left = -10;
@@ -142,10 +201,18 @@ function createScene() {
   renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
   
-  // Add orbit controls
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0, 3, 0);
+  // Add orbit controls - IMPORTANT: This is where the controls are initialized
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; // Add smooth damping
+  controls.dampingFactor = 0.05;
+  controls.minDistance = 5;
+  controls.maxDistance = 50;
+  controls.maxPolarAngle = Math.PI / 1.5; // Prevent going below the cradle
+  controls.target.set(0, 5, 0); // Look at the center of the cradle
   controls.update();
+  
+  // Force controls to be activated
+  renderer.domElement.focus();
   
   // Create a shared material for all balls
   ballMaterial = new THREE.MeshStandardMaterial({
@@ -362,6 +429,11 @@ function animate() {
   
   // Prevent too large time steps
   if (deltaTime > 0.2) deltaTime = 0.2;
+  
+  // Update controls - IMPORTANT: This makes the controls responsive
+  if (controls) {
+    controls.update();
+  }
   
   // Update physics if initialized
   if (physicsWorld) {
