@@ -259,3 +259,9 @@ export function getSceneObjects() {
     frameObjects
   };
 }
+
+// Animation loop
+export function animate() {
+  requestAnimationFrame(animate);
+  updateScene(); // Ensure OrbitControls and other updates are applied
+}

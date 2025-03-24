@@ -14,9 +14,9 @@ export function setupControls(sceneCamera, sceneRenderer, sceneControls) {
 }
 
 // Setup event listeners for user interaction
-export function setupEventListeners(cradle, startAnimationCallback, resetCameraCallback) {
-  // Click event for starting animation
-  renderer.domElement.addEventListener('click', () => {
+export function setupEventListeners(cradle, startAnimationCallback, resetCameraCallback, sceneObjects) {
+  // Use sceneObjects.renderer.domElement for the event listener
+  sceneObjects.renderer.domElement.addEventListener('click', () => {
     if (!animationStarted) {
       animationStarted = true;
       startAnimationCallback();

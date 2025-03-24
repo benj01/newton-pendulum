@@ -31,7 +31,7 @@ async function init() {
   
   // Setup controls and event listeners
   setupControls(sceneObjects.camera, sceneObjects.renderer, sceneObjects.controls);
-  setupEventListeners(cradle, startAnimation, resetCamera);
+  setupEventListeners(cradle, startAnimation, resetCamera, sceneObjects);
   
   // Set up window resize handler
   window.addEventListener('resize', () => onWindowResize(sceneObjects.camera, sceneObjects.renderer));
@@ -50,6 +50,7 @@ function animate() {
   if (!running) return;
   
   requestAnimationFrame(animate);
+  // console.log('Animation frame');
   
   const time = performance.now();
   const deltaTime = (time - lastTime) / 1000;
@@ -72,7 +73,7 @@ function animate() {
 function startAnimation() {
   if (cradle && cradle.balls.length > 0) {
     // Apply impulse to first ball (-5 in x direction)
-    applyImpulse(0, { x: -5, y: 0, z: 0 });
+    applyImpulse(0, { x: -10, y: 0, z: 0 });
   }
 }
 
