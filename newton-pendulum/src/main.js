@@ -2,7 +2,6 @@
 import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import * as Ammo from 'ammo.js';
 
 // Global variables
 let camera, scene, renderer, physics;
@@ -15,11 +14,11 @@ let ammoTmpQuat = null;
 
 // Physics configuration
 const gravityConstant = -9.8;
-const collisionConfiguration = null;
-const dispatcher = null;
-const broadphase = null;
-const solver = null;
-const physicsWorld = null;
+let collisionConfiguration = null;
+let dispatcher = null;
+let broadphase = null;
+let solver = null;
+let physicsWorld = null;
 
 // Ball configuration
 const ballRadius = 1;
@@ -55,23 +54,56 @@ async function init() {
 }
 
 async function initPhysics() {
-  // Initialize Ammo.js
-  physics = await Ammo();
-  
-  // Create temp transformation variables
-  tmpTrans = new physics.btTransform();
-  ammoTmpPos = new physics.btVector3();
-  ammoTmpQuat = new physics.btQuaternion();
-  
-  // Create physics world configuration
-  collisionConfiguration = new physics.btDefaultCollisionConfiguration();
-  dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
-  broadphase = new physics.btDbvtBroadphase();
-  solver = new physics.btSequentialImpulseConstraintSolver();
-  physicsWorld = new physics.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
-  
-  // Set gravity
-  physicsWorld.setGravity(new physics.btVector3(0, gravityConstant, 0));
+  // Create a loading message
+  const loadingMsg = document.createElement('div');
+  loadingMsg.style.position = 'absolute';
+  loadingMsg.style.top = '50%';
+  loadingMsg.style.left = '50%';
+  loadingMsg.style.transform = 'translate(-50%, -50%)';
+  loadingMsg.style.background = 'rgba(0, 0, 0, 0.7)';
+  loadingMsg.style.color = 'white';
+  loadingMsg.style.padding = '20px';
+  loadingMsg.style.borderRadius = '10px';
+  loadingMsg.style.zIndex = '1000';
+  loadingMsg.textContent = 'Loading Physics Engine...';
+  document.body.appendChild(loadingMsg);
+
+  try {
+    // Make sure Ammo is available globally from the script tag
+    if (typeof Ammo === 'undefined') {
+      throw new Error('Ammo.js is not loaded. Make sure it is included in the HTML.');
+    }
+
+    // We need to check if Ammo is a function or already instantiated
+    if (typeof Ammo === 'function') {
+      physics = await Ammo();
+    } else {
+      // Ammo is already instantiated
+      physics = Ammo;
+    }
+    
+    // Create temp transformation variables
+    tmpTrans = new physics.btTransform();
+    ammoTmpPos = new physics.btVector3();
+    ammoTmpQuat = new physics.btQuaternion();
+    
+    // Create physics world configuration
+    collisionConfiguration = new physics.btDefaultCollisionConfiguration();
+    dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
+    broadphase = new physics.btDbvtBroadphase();
+    solver = new physics.btSequentialImpulseConstraintSolver();
+    physicsWorld = new physics.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
+    
+    // Set gravity
+    physicsWorld.setGravity(new physics.btVector3(0, gravityConstant, 0));
+
+    // Remove loading message
+    document.body.removeChild(loadingMsg);
+  } catch (error) {
+    console.error('Error initializing Ammo.js:', error);
+    loadingMsg.textContent = `Error loading physics engine: ${error.message}`;
+    loadingMsg.style.background = 'rgba(255, 0, 0, 0.7)';
+  }
 }
 
 function createScene() {
@@ -124,6 +156,12 @@ function createScene() {
 }
 
 function createCradle() {
+  // Skip if physics is not initialized
+  if (!physics || !physicsWorld) {
+    console.warn('Physics not initialized, cannot create cradle');
+    return;
+  }
+
   // Frame thickness and size
   const frameSize = {
     width: (numBalls * (ballRadius * 2 + ballDistance)) + 4,
@@ -259,15 +297,33 @@ function createBall(x, y, z) {
   // Add to physics world
   physicsWorld.addRigidBody(body);
   
-  // Create a constraint for the pendulum effect
-  const pivotA = new physics.btVector3(0, ballRadius + 0.1, 0);
-  const pivotB = new physics.btVector3(x, y + 6, z);
+  // Create another rigid body for the "roof" connection point
+  const roofPointTransform = new physics.btTransform();
+  roofPointTransform.setIdentity();
+  roofPointTransform.setOrigin(new physics.btVector3(x, y + 6, 0));
+  
+  const roofPointShape = new physics.btSphereShape(0.1); // Small invisible sphere
+  const roofMotionState = new physics.btDefaultMotionState(roofPointTransform);
+  const roofRBInfo = new physics.btRigidBodyConstructionInfo(0, roofMotionState, roofPointShape, new physics.btVector3(0, 0, 0));
+  const roofBody = new physics.btRigidBody(roofRBInfo);
+  
+  // Make it static (kinematic)
+  roofBody.setCollisionFlags(roofBody.getCollisionFlags() | 2); // CF_KINEMATIC_OBJECT
+  roofBody.setActivationState(4); // DISABLE_DEACTIVATION
+  
+  physicsWorld.addRigidBody(roofBody);
   
   // Create point-to-point constraint (similar to a pendulum)
+  // The proper way to create a constraint between two rigid bodies
+  const pivotInBall = new physics.btVector3(0, ballRadius, 0);
+  const pivotInRoof = new physics.btVector3(0, 0, 0);
+  
+  // Create the constraint between the ball and the roof point
   const constraint = new physics.btPoint2PointConstraint(
     body,
-    new physics.btVector3(0, ballRadius, 0),
-    new physics.btVector3(x, y + 6, 0)
+    roofBody,
+    pivotInBall,
+    pivotInRoof
   );
   
   // Add constraint to world
@@ -307,25 +363,31 @@ function animate() {
   // Prevent too large time steps
   if (deltaTime > 0.2) deltaTime = 0.2;
   
-  // Update physics
-  physicsWorld.stepSimulation(deltaTime, 10);
-  
-  // Update ball positions
-  for (let i = 0; i < balls.length; i++) {
-    const ball = balls[i];
-    const body = ball.body;
-    const mesh = ball.mesh;
-    
-    // Get the updated position and rotation
-    const motionState = body.getMotionState();
-    motionState.getWorldTransform(tmpTrans);
-    
-    const position = tmpTrans.getOrigin();
-    const quaternion = tmpTrans.getRotation();
-    
-    // Update the mesh
-    mesh.position.set(position.x(), position.y(), position.z());
-    mesh.quaternion.set(quaternion.x(), quaternion.y(), quaternion.z(), quaternion.w());
+  // Update physics if initialized
+  if (physicsWorld) {
+    try {
+      physicsWorld.stepSimulation(deltaTime, 10);
+      
+      // Update ball positions
+      for (let i = 0; i < balls.length; i++) {
+        const ball = balls[i];
+        const body = ball.body;
+        const mesh = ball.mesh;
+        
+        // Get the updated position and rotation
+        const motionState = body.getMotionState();
+        motionState.getWorldTransform(tmpTrans);
+        
+        const position = tmpTrans.getOrigin();
+        const quaternion = tmpTrans.getRotation();
+        
+        // Update the mesh
+        mesh.position.set(position.x(), position.y(), position.z());
+        mesh.quaternion.set(quaternion.x(), quaternion.y(), quaternion.z(), quaternion.w());
+      }
+    } catch (e) {
+      console.error('Error in physics simulation:', e);
+    }
   }
   
   // Render the scene
