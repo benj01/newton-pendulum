@@ -101,4 +101,17 @@ canvas {
     right: 10px;
     font-size: 0.8em;
   }
+
+  /* Add this to your style.css file */
+#info {
+  position: absolute;
+  top: 10px;
+  width: 100%;
+  text-align: center;
+  color: white;
+  font-family: system-ui, sans-serif;
+  padding: 5px;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
 }
