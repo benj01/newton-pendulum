@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import { physics, physicsWorld, softBodyHelpers, softBodyWorldInfo } from './core.js';
+import { 
+  getPhysics, 
+  getPhysicsWorld, 
+  getSoftBodyHelpers, 
+  getSoftBodyWorldInfo,
+  setSoftBodyHelpers,
+  setSoftBodyWorldInfo
+} from './core.js';
 import { physicsConfig } from '../config/physics.js';
 
 // Store soft bodies and their associated objects to prevent garbage collection
@@ -35,7 +42,7 @@ export function createStringPhysics(cradle) {
   }
   
   // Initialize soft body physics if not already done
-  if (!softBodyHelpers || !softBodyWorldInfo) {
+  if (!getSoftBodyHelpers() || !getSoftBodyWorldInfo()) {
     const softBodyInitialized = initSoftBodyPhysics();
     if (!softBodyInitialized) {
       console.warn("Could not initialize soft body physics, falling back to rigid body strings");
@@ -86,6 +93,9 @@ export function createStringPhysics(cradle) {
 
 // Initialize soft body physics
 function initSoftBodyPhysics() {
+  const physics = getPhysics();
+  const physicsWorld = getPhysicsWorld();
+  
   if (!physics || !physicsWorld) {
     console.error("Physics world not initialized");
     return false;
@@ -101,16 +111,17 @@ function initSoftBodyPhysics() {
     }
 
     // Create soft body world info if not already created
-    if (!softBodyWorldInfo) {
-      softBodyWorldInfo = new physics.btSoftBodyWorldInfo();
-      softBodyWorldInfo.set_m_broadphase(physicsWorld.getBroadphase());
-      softBodyWorldInfo.set_m_dispatcher(physicsWorld.getDispatcher());
-      softBodyWorldInfo.set_m_gravity(physicsWorld.getGravity());
+    if (!getSoftBodyWorldInfo()) {
+      const worldInfo = new physics.btSoftBodyWorldInfo();
+      worldInfo.set_m_broadphase(physicsWorld.getBroadphase());
+      worldInfo.set_m_dispatcher(physicsWorld.getDispatcher());
+      worldInfo.set_m_gravity(physicsWorld.getGravity());
+      setSoftBodyWorldInfo(worldInfo);
     }
     
     // Create soft body helpers if not already created
-    if (!softBodyHelpers) {
-      softBodyHelpers = new physics.btSoftBodyHelpers();
+    if (!getSoftBodyHelpers()) {
+      setSoftBodyHelpers(new physics.btSoftBodyHelpers());
     }
     
     console.log("Soft body physics initialized successfully");
@@ -123,6 +134,10 @@ function initSoftBodyPhysics() {
 
 // Create a soft body rope between two points
 function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0, 1], frameBody = null, ballBody = null) {
+  const softBodyHelpers = getSoftBodyHelpers();
+  const softBodyWorldInfo = getSoftBodyWorldInfo();
+  const physics = getPhysics();
+  
   if (!softBodyHelpers || !softBodyWorldInfo) {
     console.error("Soft body helpers not initialized");
     return null;
@@ -234,13 +249,13 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
 
 // Clear all soft bodies
 export function clearSoftBodies() {
-  if (!physicsWorld) return;
+  if (!getPhysicsWorld()) return;
   
   // Remove each soft body from physics world
   for (const softBody of softBodies) {
     if (softBody) {
       try {
-        physicsWorld.removeSoftBody(softBody);
+        getPhysicsWorld().removeSoftBody(softBody);
       } catch (error) {
         console.error("Error removing soft body:", error);
       }

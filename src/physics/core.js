@@ -71,22 +71,41 @@ function checkSoftBodyCapability(physics) {
 // Initialize physics
 export async function initPhysics() {
   try {
-    // Initialize Ammo.js
-    const Ammo = await import('ammo.js');
-    physics = await Ammo.default();
+    // Make sure Ammo is available globally from the script tag
+    if (typeof Ammo === 'undefined' || !window.AmmoReadyPromise) {
+      console.warn('Waiting for Ammo.js to load...');
+      return null;
+    }
     
-    // Create collision configuration
-    const collisionConfiguration = new physics.btSoftBodyRigidBodyCollisionConfiguration();
+    // Initialize Ammo.js using the ready promise
+    try {
+      physics = await window.AmmoReadyPromise;
+      console.log('Ammo.js initialized:', typeof physics);
+    } catch (error) {
+      console.error('Error initializing Ammo.js:', error);
+      return null;
+    }
+    
+    // Explicitly check and log soft body capability first
+    const softBodyCapable = checkSoftBodyCapability(physics);
+    console.log(`Ammo.js soft body capability: ${softBodyCapable ? 'Available' : 'Not available'}`);
+    
+    // Create appropriate collision configuration
+    const collisionConfiguration = softBodyCapable ? 
+      new physics.btSoftBodyRigidBodyCollisionConfiguration() :
+      new physics.btDefaultCollisionConfiguration();
+    
+    // Create dispatcher
     const dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
+    
+    // Create broadphase
     const broadphase = new physics.btDbvtBroadphase();
+    
+    // Create solver
     const solver = new physics.btSequentialImpulseConstraintSolver();
     
     // Create gravity vector
     const gravity = new physics.btVector3(0, physicsConfig.gravityConstant, 0);
-    
-    // Check for soft body support
-    const softBodyCapable = checkSoftBodyCapability(physics);
-    console.log("Ammo.js soft body capability:", softBodyCapable);
     
     // Create world based on capability
     if (softBodyCapable) {
@@ -208,4 +227,13 @@ export function getSoftBodyHelpers() {
 
 export function getSoftBodyWorldInfo() {
   return softBodyWorldInfo;
+}
+
+// Add setter functions
+export function setSoftBodyHelpers(helpers) {
+  softBodyHelpers = helpers;
+}
+
+export function setSoftBodyWorldInfo(info) {
+  softBodyWorldInfo = info;
 } 
