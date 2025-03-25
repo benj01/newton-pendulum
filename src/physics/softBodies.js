@@ -111,6 +111,18 @@ function initSoftBodyPhysics() {
   }
 
   try {
+    // Log Ammo.js version and capabilities
+    console.log("Ammo.js details:", {
+      version: physics.AMMO_VERSION || "Unknown",
+      hasHelpers: typeof physics.btSoftBodyHelpers === 'function',
+      hasWorldInfo: typeof physics.btSoftBodyWorldInfo === 'function',
+      hasSoftRigidDynamics: typeof physics.btSoftRigidDynamicsWorld === 'function',
+      buildType: physics.buildType || "Unknown",
+      availableMethods: Object.getOwnPropertyNames(physics).filter(name => 
+        name.startsWith('bt') || name.includes('Soft')
+      )
+    });
+
     // Check for soft body support
     if (typeof physics.btSoftBodyHelpers !== 'function' || 
         typeof physics.btSoftBodyWorldInfo !== 'function' ||
@@ -178,13 +190,13 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       nodePositions.push(vec);
     }
 
-    // Create rope with explicit node count
+    // Create rope with explicit node count and proper flags
     const rope = softBodyHelpers.CreateRope(
       softBodyWorldInfo,
       ammoPoints[0],
       ammoPoints[ammoPoints.length - 1],
       numSegments - 1,
-      0
+      1  // Changed flag from 0 to 1 to enable internal links
     );
     
     if (!rope) {
@@ -239,15 +251,54 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       const bendingConstraints = rope.generateBendingConstraints(2);
       console.log(`Generated bending constraints with distance ${2}`);
       
-      // Manually create sequential links if needed
+      // Create internal links using appendAnchor with a shared rigid body
       let linkCount = 0;
+      const linkBody = new physics.btRigidBody(0); // Static body for linking
+      const transform = new physics.btTransform();
+      transform.setIdentity();
       
       for (let i = 0; i < nodes.size() - 1; i++) {
-        if (rope.appendLink(i, i + 1, material)) {
-          linkCount++;
+        try {
+          const node1 = nodes.at(i);
+          const node2 = nodes.at(i + 1);
+          
+          // Position the link body between the nodes
+          const pos1 = node1.get_m_x();
+          const pos2 = node2.get_m_x();
+          const midX = (pos1.x() + pos2.x()) / 2;
+          const midY = (pos1.y() + pos2.y()) / 2;
+          const midZ = (pos1.z() + pos2.z()) / 2;
+          
+          transform.setOrigin(new physics.btVector3(midX, midY, midZ));
+          linkBody.setWorldTransform(transform);
+          
+          // Create anchors with high influence for stiff connections
+          const result1 = rope.appendAnchor(i, linkBody, false, 0.9);
+          const result2 = rope.appendAnchor(i + 1, linkBody, false, 0.9);
+          
+          if (result1 && result2) {
+            linkCount++;
+          } else {
+            console.warn(`Failed to create link between nodes ${i} and ${i + 1}`);
+          }
+        } catch (error) {
+          console.error(`Error creating link between nodes ${i} and ${i + 1}:`, error);
         }
       }
-      console.log(`Created ${linkCount} sequential links`);
+      
+      // Add additional cross-links for stability
+      for (let i = 0; i < nodes.size() - 2; i++) {
+        try {
+          const result = rope.appendAnchor(i, linkBody, false, 0.5);
+          if (result) {
+            linkCount++;
+          }
+        } catch (error) {
+          console.warn(`Error creating cross-link for node ${i}:`, error);
+        }
+      }
+      
+      console.log(`Created ${linkCount} total links`);
       
       // Update anchoring status
       anchoringStatus.internalLinks.count = linkCount;

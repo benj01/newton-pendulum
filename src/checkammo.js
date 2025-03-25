@@ -20,6 +20,18 @@ export function checkAmmoSoftBodySupport() {
         if (typeof Ammo === 'function') {
           physics = await Ammo();
           console.log("Ammo.js initialized from function");
+          
+          // Log version and build information
+          console.log("Ammo.js details:", {
+            version: physics.AMMO_VERSION || "Unknown",
+            hasHelpers: typeof physics.btSoftBodyHelpers === 'function',
+            hasWorldInfo: typeof physics.btSoftBodyWorldInfo === 'function',
+            hasSoftRigidDynamics: typeof physics.btSoftRigidDynamicsWorld === 'function',
+            buildType: physics.buildType || "Unknown",
+            availableMethods: Object.getOwnPropertyNames(physics).filter(name => 
+              name.startsWith('bt') || name.includes('Soft')
+            ).slice(0, 10) // Only show first 10 methods to avoid console spam
+          });
         } else {
           physics = Ammo;
           console.log("Ammo.js already initialized");
