@@ -132,16 +132,19 @@ function onTouchStart(event) {
 function selectBall() {
   // Get balls from the scene
   const balls = scene.children.filter(obj => obj.geometry && obj.geometry.type === 'SphereGeometry');
+  console.log('Found balls:', balls.length);
   
   // Update the picking ray with the camera and mouse position
   raycaster.setFromCamera(mouse, camera);
   
   // Calculate objects intersecting the picking ray
   const intersects = raycaster.intersectObjects(balls);
+  console.log('Intersections:', intersects.length);
   
   if (intersects.length > 0) {
     // Set selected ball
     selectedBall = intersects[0].object;
+    console.log('Ball selected!');
     
     // Find ball index
     selectedBallIndex = balls.findIndex(ball => ball.uuid === selectedBall.uuid);

@@ -38,7 +38,7 @@ export function initScene() {
   renderer.shadowMap.enabled = true;
   
   // Add renderer to document
-  document.body.appendChild(renderer.domElement);
+  document.getElementById('app').appendChild(renderer.domElement);
   
   // Set up lighting
   setupLighting();
