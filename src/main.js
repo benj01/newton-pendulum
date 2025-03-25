@@ -232,7 +232,12 @@ function displaySoftBodyStatus() {
   status.style.fontSize = '14px';
   status.style.zIndex = '1000';
   
-  const hasSoftBodySupport = physicsSystem && physicsSystem.stringPhysics && physicsSystem.stringPhysics.softBodies;
+  // Check for actual soft body capability rather than instantiated objects
+  const hasSoftBodySupport = typeof Ammo !== 'undefined' && 
+    typeof Ammo.btSoftBodyHelpers === 'function' && 
+    typeof Ammo.btSoftBodyWorldInfo === 'function' &&
+    typeof Ammo.btSoftRigidDynamicsWorld === 'function';
+    
   status.textContent = `Soft Body Support: ${hasSoftBodySupport ? 'Enabled' : 'Disabled'}`;
   
   document.body.appendChild(status);

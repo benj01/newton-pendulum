@@ -47,40 +47,38 @@ function createFloorBody(cradle, physics, physicsWorld) {
   }
   
   console.debug("Creating floor physics body...");
-  console.debug(`Floor position: (${floor.position.x}, ${floor.position.y}, ${floor.position.z})`);
   
-  // Create box shape for the floor
+  // Create box shape for the floor - make it very wide and thick
   const shape = new physics.btBoxShape(new physics.btVector3(
-    15, // Half width (30/2)
-    0.1, // Small thickness
-    15  // Half depth (30/2)
+    30, // Much wider
+    1,  // Thicker
+    30  // Much deeper
   ));
   
   const transform = new physics.btTransform();
   transform.setIdentity();
   transform.setOrigin(new physics.btVector3(
     floor.position.x,
-    floor.position.y,
+    floor.position.y - 1, // Offset down by half thickness so top surface aligns with visual floor
     floor.position.z
   ));
-  
-  // Apply floor rotation
-  const quaternion = new physics.btQuaternion();
-  quaternion.setEulerZYX(-Math.PI / 2, 0, 0); // Match the floor's rotation
-  transform.setRotation(quaternion);
   
   const motionState = new physics.btDefaultMotionState(transform);
   const localInertia = new physics.btVector3(0, 0, 0);
   
+  // Mass = 0 makes it a static rigid body (immovable)
   const rbInfo = new physics.btRigidBodyConstructionInfo(0, motionState, shape, localInertia);
   const body = new physics.btRigidBody(rbInfo);
   
-  // Set friction and restitution
-  body.setFriction(0.5);
+  // Set high friction to prevent sliding
+  body.setFriction(0.8);
   body.setRestitution(0.3);
   
   // Add name for collision logging
   body.name = 'floor';
+  
+  // Make it static
+  body.setCollisionFlags(body.getCollisionFlags() | 1); // CF_STATIC_OBJECT
   
   // Add to physics world
   physicsWorld.addRigidBody(body);
@@ -96,7 +94,7 @@ function createFloorBody(cradle, physics, physicsWorld) {
 function createFrameBodies(cradle, physics, physicsWorld) {
   const frameObjects = cradle.children.filter(child => child.name.startsWith('frame_'));
   
-  frameObjects.forEach(frame => {
+  frameObjects.forEach((frame, index) => {
     const shape = new physics.btBoxShape(new physics.btVector3(
       frame.geometry.parameters.width / 2,
       frame.geometry.parameters.height / 2,
@@ -114,12 +112,23 @@ function createFrameBodies(cradle, physics, physicsWorld) {
     const motionState = new physics.btDefaultMotionState(transform);
     const localInertia = new physics.btVector3(0, 0, 0);
     
-    const rbInfo = new physics.btRigidBodyConstructionInfo(0, motionState, shape, localInertia);
+    // Give frame a proper mass
+    const mass = 5.0; // Substantial mass to make it stable
+    shape.calculateLocalInertia(mass, localInertia);
+    
+    const rbInfo = new physics.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
     const body = new physics.btRigidBody(rbInfo);
     
     // Set friction and restitution
     body.setFriction(physicsConfig.frame.friction);
     body.setRestitution(physicsConfig.frame.restitution);
+    
+    // Ensure the body is active
+    body.setActivationState(4); // DISABLE_DEACTIVATION
+    body.activate(true);
+    
+    // Add name for collision logging
+    body.name = `frame_${index}`;
     
     // Add to physics world
     physicsWorld.addRigidBody(body);
@@ -166,6 +175,10 @@ function createBallBodies(cradle, physics, physicsWorld) {
       physicsConfig.ball.linearDamping,
       physicsConfig.ball.angularDamping
     );
+    
+    // Ensure the body is active
+    body.setActivationState(4); // DISABLE_DEACTIVATION
+    body.activate(true);
     
     // Add name for collision logging
     body.name = `ball_${index}`;

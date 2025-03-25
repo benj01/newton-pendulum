@@ -66,6 +66,7 @@ export function createStringPhysics(cradle) {
   
   // Configuration for soft body ropes
   const segmentsPerString = physicsConfig.softBody.segmentsPerString;
+  let createdRopes = 0;
   
   // Create a rope for each ball
   for (const ball of balls) {
@@ -83,7 +84,15 @@ export function createStringPhysics(cradle) {
     );
     
     // Create soft body rope with proper anchoring
-    createSoftBodyRope(startPoint, endPoint, segmentsPerString, [0, 1], topFrame.userData.physicsBody, ball.userData.physicsBody);
+    const rope = createSoftBodyRope(startPoint, endPoint, segmentsPerString, [0, 1], topFrame.userData.physicsBody, ball.userData.physicsBody);
+    if (rope) {
+      createdRopes++;
+    }
+  }
+  
+  if (createdRopes === 0) {
+    console.error("Failed to create any ropes, falling back to rigid body strings");
+    return null;
   }
   
   return {
@@ -137,9 +146,16 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
   const softBodyHelpers = getSoftBodyHelpers();
   const softBodyWorldInfo = getSoftBodyWorldInfo();
   const physics = getPhysics();
+  const physicsWorld = getPhysicsWorld();
   
-  if (!softBodyHelpers || !softBodyWorldInfo) {
-    console.error("Soft body helpers not initialized");
+  if (!softBodyHelpers || !softBodyWorldInfo || !physics || !physicsWorld) {
+    console.error("Soft body system not properly initialized");
+    return null;
+  }
+
+  // Validate rigid bodies
+  if (!frameBody || !ballBody) {
+    console.error("Frame or ball body not provided for rope anchoring");
     return null;
   }
 
@@ -148,99 +164,113 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
     const ropeLength = endPoint.clone().sub(startPoint).length();
     const segmentLength = ropeLength / numSegments;
     
-    // Create rope direction vector
-    const direction = endPoint.clone().sub(startPoint).normalize();
-    
     // Create array of points for the rope
     const points = [];
+    const ammoPoints = [];
+    
+    // Initialize points with proper spacing
     for (let i = 0; i <= numSegments; i++) {
-      const point = startPoint.clone().add(direction.clone().multiplyScalar(i * segmentLength));
+      const t = i / numSegments;
+      const point = startPoint.clone().lerp(endPoint, t);
       points.push(point);
+      const vec = new physics.btVector3(point.x, point.y, point.z);
+      ammoPoints.push(vec);
+      nodePositions.push(vec);
     }
-    
-    // Convert points to Ammo.js vectors and store them
-    const ammoPoints = points.map(p => {
-      const vec = new physics.btVector3(p.x, p.y, p.z);
-      nodePositions.push(vec); // Store for cleanup
-      return vec;
-    });
-    
-    // Create rope soft body using first and last points
+
+    // Create rope with explicit node count
     const rope = softBodyHelpers.CreateRope(
       softBodyWorldInfo,
-      ammoPoints[0],              // Start position
-      ammoPoints[ammoPoints.length - 1], // End position
-      numSegments,                // Number of segments
-      0                          // Flag (0 for normal)
+      ammoPoints[0],
+      ammoPoints[ammoPoints.length - 1],
+      numSegments - 1, // Adjust segment count to get correct number of nodes
+      0
     );
     
     if (!rope) {
       console.error("Failed to create rope soft body");
       return null;
     }
-    
+
     // Configure rope properties
     const sbConfig = rope.get_m_cfg();
-    const softBodyConfig = physicsConfig.softBody;
     
-    // Set configuration values
-    sbConfig.set_kDP(softBodyConfig.damping);           // Damping
-    sbConfig.set_kLF(softBodyConfig.lift);             // Lift
-    sbConfig.set_kPR(softBodyConfig.pressure);         // Pressure
-    sbConfig.set_kVC(softBodyConfig.volumeConservation); // Volume
-    sbConfig.set_kDF(softBodyConfig.dynamicFriction);   // Dynamic friction
-    sbConfig.set_kMT(softBodyConfig.poseMatching);      // Pose matching
-    sbConfig.set_kCHR(softBodyConfig.contactHardness);  // Contact hardness
-    sbConfig.set_kKHR(softBodyConfig.kineticHardness);  // Kinetic hardness
-    sbConfig.set_kSHR(softBodyConfig.softHardness);     // Soft hardness
-    sbConfig.set_maxvolume(softBodyConfig.maxVolume);   // Max volume
+    // Material configuration
+    sbConfig.set_kDP(0.1);                // Reduced damping
+    sbConfig.set_kDG(0.0);                // No drag
+    sbConfig.set_kLF(0.0);                // No lift
+    sbConfig.set_kPR(0.0);                // No pressure
+    sbConfig.set_kVC(0);                  // No volume conservation
+    sbConfig.set_kDF(0.1);                // Reduced dynamic friction
+    sbConfig.set_kMT(0.05);               // Very low pose matching for more natural movement
     
-    // Set total mass and generate clusters
-    rope.setTotalMass(softBodyConfig.mass, false);
-    rope.generateClusters(4);
-    rope.generateBendingConstraints(2);
+    // Collision configuration
+    sbConfig.set_kCHR(0.0);               // No collision between soft bodies and rigid bodies
+    sbConfig.set_kKHR(0.0);               // No kinetic contact response
+    sbConfig.set_kSHR(0.0);               // No soft contact response
     
-    // Get nodes array
+    // Set total mass (very light)
+    rope.setTotalMass(0.01, false);
+    
+    // Get nodes and initialize them
     const nodes = rope.get_m_nodes();
     const numNodes = nodes.size();
     
-    // Validate and initialize node positions
+    console.log(`Created rope with ${numNodes} nodes`);
+    
+    // Initialize node positions and properties
     for (let i = 0; i < numNodes; i++) {
       const node = nodes.at(i);
-      const pos = ammoPoints[i];
+      const t = i / (numNodes - 1);
+      const interpolatedPoint = startPoint.clone().lerp(endPoint, t);
       
-      if (!pos) {
-        console.error(`Invalid position for node ${i}`);
-        continue;
-      }
-      
-      // Set node positions and previous positions
+      const pos = new physics.btVector3(interpolatedPoint.x, interpolatedPoint.y, interpolatedPoint.z);
       node.set_m_x(pos);
       node.set_m_q(pos);
+      node.set_m_v(new physics.btVector3(0, 0, 0));
       
-      // Set mass for internal nodes (fixed points get zero inverse mass)
-      if (!fixedPoints.includes(i)) {
-        const nodeMass = softBodyConfig.mass / numNodes;
-        node.set_m_im(1.0 / nodeMass);
+      // Set mass for end nodes
+      if (i === 0 || i === numNodes - 1) {
+        node.set_m_im(0);  // Fixed points are immovable
       } else {
-        node.set_m_im(0);
+        node.set_m_im(1.0); // Lighter internal nodes
       }
     }
     
-    // Create anchors to rigid bodies
-    if (frameBody && fixedPoints.includes(0)) {
-      rope.appendAnchor(0, frameBody, true);
+    // Add to physics world first
+    physicsWorld.addSoftBody(rope);
+    
+    // Create anchors after adding to world
+    console.log("Attempting to create anchors...");
+    
+    // Try creating frame anchor with different parameters
+    console.log("Creating frame anchor...");
+    let frameAnchorSuccess = rope.appendAnchor(0, frameBody, true); // Try with collision enabled
+    if (!frameAnchorSuccess) {
+        console.log("Retrying frame anchor with different parameters...");
+        frameAnchorSuccess = rope.appendAnchor(0, frameBody, false); // Try without collision
     }
     
-    if (ballBody && fixedPoints.includes(numNodes - 1)) {
-      rope.appendAnchor(numNodes - 1, ballBody, true);
+    if (!frameAnchorSuccess) {
+      console.error("Failed to create frame anchor after retries");
+      physicsWorld.removeSoftBody(rope);
+      return null;
     }
     
-    // Add to physics world
-    physicsWorld.addSoftBody(rope, 1, -1);
+    // Create ball anchor
+    console.log("Creating ball anchor...");
+    const ballAnchorSuccess = rope.appendAnchor(numNodes - 1, ballBody, true);
+    if (!ballAnchorSuccess) {
+      console.error("Failed to create ball anchor");
+      physicsWorld.removeSoftBody(rope);
+      return null;
+    }
+    
+    // Store the rope if successful
     softBodies.push(rope);
-    
+    console.log("Successfully created rope with both anchors");
     return rope;
+    
   } catch (error) {
     console.error("Error creating soft body rope:", error);
     return null;

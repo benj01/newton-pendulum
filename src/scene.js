@@ -131,18 +131,17 @@ function createFrame(cradle, frameWidth) {
     roughness: visualConfig.frameMaterial.roughness
   });
   
-  // Top bar
-  const topBarGeometry = new THREE.BoxGeometry(
+  // Base
+  const baseGeometry = new THREE.BoxGeometry(
     frameWidth,
     sceneConfig.frame.height,
     sceneConfig.frame.depth
   );
-  const topBar = new THREE.Mesh(topBarGeometry, frameMaterial);
-  topBar.position.set(0, sceneConfig.frame.topBarLength, 0);
-  topBar.castShadow = true;
-  topBar.receiveShadow = true;
-  topBar.name = 'frame_top';
-  cradle.add(topBar);
+  const base = new THREE.Mesh(baseGeometry, frameMaterial);
+  base.position.set(0, -2, 0);
+  base.receiveShadow = true;
+  base.name = 'frame_base';
+  cradle.add(base);
   
   // Left leg
   const legGeometry = new THREE.BoxGeometry(
@@ -151,7 +150,11 @@ function createFrame(cradle, frameWidth) {
     sceneConfig.frame.depth
   );
   const leftLeg = new THREE.Mesh(legGeometry, frameMaterial);
-  leftLeg.position.set(-frameWidth / 2 + sceneConfig.frame.width/2, sceneConfig.frame.sideBarLength / 2, 0);
+  leftLeg.position.set(
+    -frameWidth / 2 + sceneConfig.frame.width/2, 
+    -2 + sceneConfig.frame.sideBarLength / 2,
+    0
+  );
   leftLeg.castShadow = true;
   leftLeg.receiveShadow = true;
   leftLeg.name = 'frame_left';
@@ -159,23 +162,28 @@ function createFrame(cradle, frameWidth) {
   
   // Right leg
   const rightLeg = new THREE.Mesh(legGeometry, frameMaterial);
-  rightLeg.position.set(frameWidth / 2 - sceneConfig.frame.width/2, sceneConfig.frame.sideBarLength / 2, 0);
+  rightLeg.position.set(
+    frameWidth / 2 - sceneConfig.frame.width/2, 
+    -2 + sceneConfig.frame.sideBarLength / 2,
+    0
+  );
   rightLeg.castShadow = true;
   rightLeg.receiveShadow = true;
   rightLeg.name = 'frame_right';
   cradle.add(rightLeg);
   
-  // Base
-  const baseGeometry = new THREE.BoxGeometry(
+  // Top bar
+  const topBarGeometry = new THREE.BoxGeometry(
     frameWidth,
     sceneConfig.frame.height,
     sceneConfig.frame.depth
   );
-  const base = new THREE.Mesh(baseGeometry, frameMaterial);
-  base.position.set(0, 0, 0);
-  base.receiveShadow = true;
-  base.name = 'frame_base';
-  cradle.add(base);
+  const topBar = new THREE.Mesh(topBarGeometry, frameMaterial);
+  topBar.position.set(0, -2 + sceneConfig.frame.sideBarLength, 0);
+  topBar.castShadow = true;
+  topBar.receiveShadow = true;
+  topBar.name = 'frame_top';
+  cradle.add(topBar);
 }
 
 // Create balls for the cradle
@@ -191,7 +199,7 @@ function createBalls(cradle) {
   
   const totalWidth = sceneConfig.numBalls * (sceneConfig.ballRadius * 2 + sceneConfig.ballSpacing);
   const startX = -totalWidth / 2 + sceneConfig.ballRadius;
-  const ballHeight = sceneConfig.frame.sideBarLength * 0.4;
+  const ballHeight = -2 + sceneConfig.frame.sideBarLength * 0.6;
   
   for (let i = 0; i < sceneConfig.numBalls; i++) {
     const ballGeometry = new THREE.SphereGeometry(sceneConfig.ballRadius, 32, 32);
