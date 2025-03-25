@@ -156,6 +156,9 @@ function selectBall() {
       camera.getWorldDirection(dragPlane.normal).negate(),
       selectedBall.position
     );
+
+    // Set up drag plane aligned with the XY plane (constraining to sideways movement)
+    dragPlane.set(new THREE.Vector3(0, 0, 1), 0); // Normal is z-axis, offset is 0
     
     // Calculate drag point (intersection of ray with drag plane)
     raycaster.ray.intersectPlane(dragPlane, dragPoint);
@@ -227,7 +230,18 @@ function updateDragPosition() {
   
   // Update the mouse constraint target position
   updateMouseConstraint(dragPoint);
+  
+  // Directly update the visual position of the ball for immediate feedback
+  if (selectedBall) {
+    // Update the visual position of the ball
+    //selectedBall.position.copy(dragPoint);
+    selectedBall.position.x = dragPoint.x;
+    
+    // No need to update the string here - the existing code in scene.js 
+    // handles string updates in the animation loop via updateStrings()
+  }
 }
+
 
 // Mouse up event handler
 function onMouseUp(event) {

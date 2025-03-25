@@ -161,7 +161,7 @@ function createBalls() {
     const ball = new THREE.Mesh(ballGeometry, ballMaterial);
     
     const x = startX + i * (config.ballRadius * 2 + config.ballDistance);
-    ball.position.set(x, 5, 0);
+    ball.position.set(x, 3, 0);
     
     ball.castShadow = true;
     ball.receiveShadow = true;
@@ -170,14 +170,22 @@ function createBalls() {
   }
 }
 
-// Create strings connecting balls to frame
+// Store fixed attachment points for strings
+let stringAttachPoints = [];
+
 function createStrings() {
   const stringMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+  stringAttachPoints = []; // Clear any existing points
   
   for (let i = 0; i < balls.length; i++) {
     const ball = balls[i];
+    
+    // Store the initial attachment point (fixed to frame)
+    const attachPoint = new THREE.Vector3(ball.position.x, config.frameHeight, 0);
+    stringAttachPoints.push(attachPoint);
+    
     const points = [
-      new THREE.Vector3(ball.position.x, config.frameHeight, 0),
+      attachPoint.clone(),
       new THREE.Vector3(ball.position.x, ball.position.y + config.ballRadius, 0)
     ];
     
@@ -209,10 +217,11 @@ function updateStrings() {
   for (let i = 0; i < balls.length; i++) {
     const ball = balls[i];
     const string = strings[i];
+    const attachPoint = stringAttachPoints[i];
     
-    // Update string geometry
+    // Update string geometry - using fixed top point and moving bottom point
     const points = [
-      new THREE.Vector3(ball.position.x, config.frameHeight, 0),
+      attachPoint, // Fixed attachment point
       new THREE.Vector3(ball.position.x, ball.position.y + config.ballRadius, 0)
     ];
     
