@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { sceneConfig } from './config/scene.js';
 import { visualConfig } from './config/visual.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 // Scene variables
 let scene, camera, renderer;
@@ -45,7 +46,20 @@ export function initScene() {
   renderer.shadowMap.normalBias = visualConfig.shadows.normalBias;
   
   // Add renderer to document
-  document.getElementById('app').appendChild(renderer.domElement);
+  const appElement = document.getElementById('app');
+  if (!appElement) {
+    throw new Error("Could not find #app element in the document");
+  }
+  appElement.appendChild(renderer.domElement);
+  
+  // Create OrbitControls
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.screenSpacePanning = false;
+  controls.minDistance = 5;
+  controls.maxDistance = 15;
+  controls.maxPolarAngle = Math.PI / 2;
   
   // Set up lighting
   setupLighting(scene);
@@ -53,7 +67,8 @@ export function initScene() {
   return {
     scene,
     camera,
-    renderer
+    renderer,
+    controls
   };
 }
 

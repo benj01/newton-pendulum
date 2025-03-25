@@ -283,7 +283,11 @@ export function updateSoftBodyStrings(cradle) {
       const nodes = softBody.get_m_nodes();
       const numNodes = nodes.size();
       
-      if (numNodes === 0) continue;
+      if (numNodes === 0) {
+        console.warn(`No nodes found for string ${i}, using fallback visualization`);
+        createFallbackStringGeometry(string, ball, topFrame);
+        continue;
+      }
       
       // Create positions array for the line segments
       const positions = new Float32Array(numNodes * 3);
@@ -330,44 +334,69 @@ export function updateSoftBodyStrings(cradle) {
       
       // Only update the geometry if we have at least some valid positions
       if (hasValidPositions) {
-        // Update or create geometry
-        if (!string.geometry || !(string.geometry instanceof THREE.BufferGeometry)) {
-          // Create new buffer geometry
-          const geometry = new THREE.BufferGeometry();
-          geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-          string.geometry = geometry;
-        } else {
-          // Update existing geometry
-          const positionAttribute = string.geometry.getAttribute('position');
-          
-          // Resize buffer if needed
-          if (positionAttribute.array.length !== positions.length) {
-            string.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-          } else {
-            positionAttribute.set(positions);
-            positionAttribute.needsUpdate = true;
-          }
-        }
-        
-        // Skip bounding sphere computation to avoid NaN-related issues
-        try {
-          string.geometry.computeBoundingBox();
-        } catch (e) {
-          console.warn("Error computing bounding box:", e);
-        }
-        
-        // Ensure the string is visible
-        string.visible = true;
+        updateStringGeometry(string, positions);
       } else {
-        console.error(`No valid positions found for soft body string ${i}`);
-        string.visible = false;
+        console.warn(`No valid positions found for soft body string ${i}, using fallback visualization`);
+        createFallbackStringGeometry(string, ball, topFrame);
       }
       
     } catch (error) {
       console.error(`Error updating soft body string ${i}:`, error);
-      if (string) {
-        string.visible = false; // Hide string on error
-      }
+      createFallbackStringGeometry(string, ball, topFrame);
     }
   }
+}
+
+// Helper function to create a fallback straight line geometry
+function createFallbackStringGeometry(string, ball, topFrame) {
+  // Create a simple straight line between the frame and ball
+  const positions = new Float32Array(2 * 3); // Two points for a straight line
+  const startX = ball.position.x;
+  const startY = topFrame.position.y;
+  const endX = ball.position.x;
+  const endY = ball.position.y + ball.geometry.parameters.radius;
+  
+  // Set start point
+  positions[0] = startX;
+  positions[1] = startY;
+  positions[2] = 0;
+  
+  // Set end point
+  positions[3] = endX;
+  positions[4] = endY;
+  positions[5] = 0;
+  
+  updateStringGeometry(string, positions);
+}
+
+// Helper function to update string geometry
+function updateStringGeometry(string, positions) {
+  // Update or create geometry
+  if (!string.geometry || !(string.geometry instanceof THREE.BufferGeometry)) {
+    // Create new buffer geometry
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    string.geometry = geometry;
+  } else {
+    // Update existing geometry
+    const positionAttribute = string.geometry.getAttribute('position');
+    
+    // Resize buffer if needed
+    if (positionAttribute.array.length !== positions.length) {
+      string.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    } else {
+      positionAttribute.set(positions);
+      positionAttribute.needsUpdate = true;
+    }
+  }
+  
+  // Skip bounding sphere computation to avoid NaN-related issues
+  try {
+    string.geometry.computeBoundingBox();
+  } catch (e) {
+    console.warn("Error computing bounding box:", e);
+  }
+  
+  // Ensure the string is visible
+  string.visible = true;
 } 

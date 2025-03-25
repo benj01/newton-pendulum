@@ -21,6 +21,11 @@ async function init() {
     // Initialize scene
     ({ scene, camera, renderer, controls } = initScene());
     
+    // Verify critical components are initialized
+    if (!scene || !camera || !renderer || !controls) {
+      throw new Error("Failed to initialize critical scene components");
+    }
+    
     // Create visual cradle
     cradle = createCradle();
     scene.add(cradle);
@@ -40,11 +45,12 @@ async function init() {
     // Set up event listeners
     setupEventListeners();
     
-    // Start animation loop
-    animate();
-    
     // Display soft body support status
     displaySoftBodyStatus();
+    
+    // Start animation loop only after all components are initialized
+    isAnimating = true;
+    animate();
   } catch (error) {
     console.error("Error initializing application:", error);
     alert("Failed to initialize application. Please check the console for details.");
@@ -189,18 +195,26 @@ function animate() {
   requestAnimationFrame(animate);
   
   if (isAnimating) {
-    // Update physics
-    updatePhysics(cradle);
+    // Update physics with defensive check
+    if (cradle) {
+      updatePhysics(cradle);
+    }
     
-    // Update scene
-    updateScene();
+    // Update scene with defensive check
+    if (typeof updateScene === 'function') {
+      updateScene();
+    }
     
-    // Update controls
-    controls.update();
+    // Update controls with defensive check
+    if (controls && typeof controls.update === 'function') {
+      controls.update();
+    }
   }
   
-  // Render scene
-  renderer.render(scene, camera);
+  // Render scene with defensive checks
+  if (renderer && scene && camera) {
+    renderer.render(scene, camera);
+  }
 }
 
 // Display soft body support status

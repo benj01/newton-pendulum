@@ -125,15 +125,23 @@ export class UserConsole {
         <h3>Ball Settings</h3>
         <div class="setting">
           <label>Mass:</label>
-          <input type="range" min="0.1" max="5" step="0.1" value="${physicsConfig.ballMass}" data-setting="ballMass">
+          <input type="range" min="0.1" max="5" step="0.1" value="${physicsConfig.ball.mass}" data-setting="ball.mass">
         </div>
         <div class="setting">
           <label>Restitution:</label>
-          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.ballRestitution}" data-setting="ballRestitution">
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.ball.restitution}" data-setting="ball.restitution">
         </div>
         <div class="setting">
           <label>Friction:</label>
-          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.ballFriction}" data-setting="ballFriction">
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.ball.friction}" data-setting="ball.friction">
+        </div>
+        <div class="setting">
+          <label>Linear Damping:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.ball.linearDamping}" data-setting="ball.linearDamping">
+        </div>
+        <div class="setting">
+          <label>Angular Damping:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.ball.angularDamping}" data-setting="ball.angularDamping">
         </div>
       </div>
       
@@ -141,11 +149,83 @@ export class UserConsole {
         <h3>String Settings</h3>
         <div class="setting">
           <label>Segments:</label>
-          <input type="number" min="4" max="16" value="${physicsConfig.stringSegments}" data-setting="stringSegments">
+          <input type="number" min="4" max="16" value="${physicsConfig.string.segments}" data-setting="string.segments">
         </div>
         <div class="setting">
           <label>Mass:</label>
-          <input type="range" min="0.001" max="0.1" step="0.001" value="${physicsConfig.stringMass}" data-setting="stringMass">
+          <input type="range" min="0.001" max="0.1" step="0.001" value="${physicsConfig.string.mass}" data-setting="string.mass">
+        </div>
+        <div class="setting">
+          <label>Radius:</label>
+          <input type="range" min="0.01" max="0.1" step="0.001" value="${physicsConfig.string.radius}" data-setting="string.radius">
+        </div>
+        <div class="setting">
+          <label>Restitution:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.string.restitution}" data-setting="string.restitution">
+        </div>
+        <div class="setting">
+          <label>Friction:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.string.friction}" data-setting="string.friction">
+        </div>
+        <div class="setting">
+          <label>Damping:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.string.damping}" data-setting="string.damping">
+        </div>
+      </div>
+      
+      <div class="setting-group">
+        <h3>Soft Body Settings</h3>
+        <div class="setting">
+          <label>Enabled:</label>
+          <input type="checkbox" ${physicsConfig.softBody.enabled ? 'checked' : ''} data-setting="softBody.enabled">
+        </div>
+        <div class="setting">
+          <label>Segments per String:</label>
+          <input type="number" min="4" max="16" value="${physicsConfig.softBody.segmentsPerString}" data-setting="softBody.segmentsPerString">
+        </div>
+        <div class="setting">
+          <label>Mass:</label>
+          <input type="range" min="0.001" max="0.1" step="0.001" value="${physicsConfig.softBody.mass}" data-setting="softBody.mass">
+        </div>
+        <div class="setting">
+          <label>Damping:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.softBody.damping}" data-setting="softBody.damping">
+        </div>
+        <div class="setting">
+          <label>Lift:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.softBody.lift}" data-setting="softBody.lift">
+        </div>
+        <div class="setting">
+          <label>Pressure:</label>
+          <input type="range" min="0" max="100" step="1" value="${physicsConfig.softBody.pressure}" data-setting="softBody.pressure">
+        </div>
+        <div class="setting">
+          <label>Volume Conservation:</label>
+          <input type="range" min="0" max="100" step="1" value="${physicsConfig.softBody.volumeConservation}" data-setting="softBody.volumeConservation">
+        </div>
+        <div class="setting">
+          <label>Dynamic Friction:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.softBody.dynamicFriction}" data-setting="softBody.dynamicFriction">
+        </div>
+        <div class="setting">
+          <label>Pose Matching:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.softBody.poseMatching}" data-setting="softBody.poseMatching">
+        </div>
+        <div class="setting">
+          <label>Contact Hardness:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.softBody.contactHardness}" data-setting="softBody.contactHardness">
+        </div>
+        <div class="setting">
+          <label>Kinetic Hardness:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.softBody.kineticHardness}" data-setting="softBody.kineticHardness">
+        </div>
+        <div class="setting">
+          <label>Soft Hardness:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${physicsConfig.softBody.softHardness}" data-setting="softBody.softHardness">
+        </div>
+        <div class="setting">
+          <label>Max Volume:</label>
+          <input type="range" min="0" max="2" step="0.01" value="${physicsConfig.softBody.maxVolume}" data-setting="softBody.maxVolume">
         </div>
       </div>
     `;
@@ -281,6 +361,12 @@ export class UserConsole {
         sceneConfig.camera[property] = value;
       } else if (category === 'lighting') {
         sceneConfig.lighting[property] = value;
+      } else if (category === 'ball') {
+        physicsConfig.ball[property] = value;
+      } else if (category === 'string') {
+        physicsConfig.string[property] = value;
+      } else if (category === 'softBody') {
+        physicsConfig.softBody[property] = value;
       }
     } else {
       // Handle top-level properties
