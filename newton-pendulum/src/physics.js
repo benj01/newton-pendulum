@@ -171,21 +171,14 @@ export function createPhysicsBodies(cradle) {
     frameBodies.push(frameBody);
   }
   
-  // Create ball bodies and constraints
+  // Create ball bodies (without old constraints)
   for (let i = 0; i < cradle.balls.length; i++) {
     const ball = cradle.balls[i];
-    
-    // Create ball body
     const ballBody = createBallBody(ball);
     ballBodies.push(ballBody);
-    
-    // Create ceiling anchor point (for constraint)
-    const roofPoint = createRoofPoint(ball.position.x, ball.position.y + 6, 0);
-    
-    // Create constraint between ball and roof point
-    const constraint = createConstraint(ballBody, roofPoint, ball);
-    constraints.push(constraint);
   }
+
+  // Create soft body strings that will handle the constraints
   createStringPhysics(cradle);
 }
 
@@ -238,14 +231,11 @@ export function createStringPhysics(cradle) {
     const startPoint = new THREE.Vector3(ball.position.x, frameTopY, 0);
     const endPoint = new THREE.Vector3(ball.position.x, ball.position.y + ball.geometry.parameters.radius, 0);
     
-    // Create soft body rope
-    const rope = createSoftBodyRope(startPoint, endPoint, segmentsPerString, [0]);
+    // Get the top frame body
+    const frameBody = frameBodies[0]; // Use the first frame body (top bar)
     
-    // Attach rope end to ball
-    if (rope) {
-      // Anchor the end node to the ball
-      rope.appendAnchor(segmentsPerString, ballBody, false, 1.0);
-    }
+    // Create soft body rope with proper anchoring
+    createSoftBodyRope(startPoint, endPoint, segmentsPerString, [0, 1], frameBody, ballBody);
   }
   
   return {
@@ -418,7 +408,7 @@ function initSoftBodyPhysics() {
 }
 
 // Create a soft body rope between two points
-function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0, 1]) {
+function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0, 1], frameBody = null, ballBody = null) {
   if (!softBodyHelpers || !softBodyWorldInfo) {
     console.error("Soft body helpers not initialized");
     return null;
@@ -454,14 +444,25 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
     // Set mass per node (lower = less stretchiness)
     rope.setTotalMass(0.1, false);     // Low mass, distribute across nodes
     
-    // Fix specified points
-    if (fixedPoints.includes(0)) {
+    // Fix specified points and create anchors
+    if (fixedPoints.includes(0) && frameBody) {
       rope.setMass(0, 0);              // First point is fixed (massless)
-      // Do not anchor the first point to the ball - this was causing issues
-      // It should be fixed in space at the top frame instead
+      // Anchor to frame
+      const frameAnchor = new physics.btSoftBody.Anchor();
+      frameAnchor.set_m_node(rope.get_m_nodes().at(0));
+      frameAnchor.set_m_body(frameBody);
+      frameAnchor.set_m_influence(1.0);
+      rope.appendAnchor(0, frameBody, false);
     }
-    if (fixedPoints.includes(1)) {
-      rope.setMass(numSegments, 0);    // Last point is fixed (massless)
+    
+    if (fixedPoints.includes(1) && ballBody) {
+      rope.setMass(numSegments - 1, 0);    // Last point is fixed (massless)
+      // Anchor to ball
+      const ballAnchor = new physics.btSoftBody.Anchor();
+      ballAnchor.set_m_node(rope.get_m_nodes().at(numSegments - 1));
+      ballAnchor.set_m_body(ballBody);
+      ballAnchor.set_m_influence(1.0);
+      rope.appendAnchor(numSegments - 1, ballBody, false);
     }
     
     // Add rope to the physics world
@@ -731,80 +732,51 @@ export function updateSoftBodyStrings(cradle) {
     return updateStringPhysics(cradle);
   }
   
-  // Get visual string segments
+  // Get visual strings
   const visualStrings = cradle.strings;
   
-  // Update each soft body rope to match the visual
+  // Update each soft body rope
   for (let i = 0; i < softBodies.length && i < visualStrings.length; i++) {
     const softBody = softBodies[i];
-    const visualString = visualStrings[i];
+    const string = visualStrings[i][0]; // Get the single string object
     
-    if (!softBody || !visualString) continue;
+    if (!softBody || !string) continue;
     
     try {
-      // Get the number of nodes in this soft body
-      const numNodes = softBody.get_m_nodes().size();
-      const segmentsPerString = visualString.length;
+      // Get the first and last nodes of the soft body
+      const firstNode = softBody.get_m_nodes().at(0);
+      const lastNode = softBody.get_m_nodes().at(softBody.get_m_nodes().size() - 1);
       
-      // Only update if we have the right number of visual segments
-      if (numNodes > 0 && segmentsPerString > 0) {
-        for (let j = 0; j < segmentsPerString; j++) {
-          // Map segment index to node index (distribute evenly)
-          const nodeIndex = Math.floor(j * (numNodes - 1) / (segmentsPerString - 1));
-          
-          if (nodeIndex < numNodes) {
-            // Get node position
-            const node = softBody.get_m_nodes().at(nodeIndex);
-            const pos = node.get_m_x();
-            
-            // Update visual segment
-            const segment = visualString[j];
-            segment.position.set(pos.x(), pos.y(), pos.z());
-            
-            // If not the last segment, calculate orientation based on next node
-            if (j < segmentsPerString - 1) {
-              const nextNodeIndex = Math.min(
-                Math.floor((j + 1) * (numNodes - 1) / (segmentsPerString - 1)),
-                numNodes - 1
-              );
-              
-              if (nextNodeIndex < numNodes) {
-                const nextNode = softBody.get_m_nodes().at(nextNodeIndex);
-                const nextPos = nextNode.get_m_x();
-                
-                // Calculate direction vector
-                const dir = new THREE.Vector3(
-                  nextPos.x() - pos.x(),
-                  nextPos.y() - pos.y(),
-                  nextPos.z() - pos.z()
-                );
-                
-                // Only normalize if the direction has length
-                if (dir.length() > 0.01) {
-                  dir.normalize();
-                  const up = new THREE.Vector3(0, 1, 0);
-                  segment.quaternion.setFromUnitVectors(up, dir);
-                }
-                
-                // Set length based on distance between points
-                const distance = Math.sqrt(
-                  Math.pow(nextPos.x() - pos.x(), 2) +
-                  Math.pow(nextPos.y() - pos.y(), 2) +
-                  Math.pow(nextPos.z() - pos.z(), 2)
-                );
-                
-                if (distance > 0.01) {
-                  segment.scale.y = distance / segment.geometry.parameters.height;
-                }
-              }
-            }
-          }
-        }
+      const startPos = firstNode.get_m_x();
+      const endPos = lastNode.get_m_x();
+      
+      // Calculate the direction and length of the string
+      const direction = new THREE.Vector3(
+        endPos.x() - startPos.x(),
+        endPos.y() - startPos.y(),
+        endPos.z() - startPos.z()
+      );
+      
+      const length = direction.length();
+      
+      if (length > 0.01) {
+        // Update string position to midpoint between nodes
+        string.position.set(
+          (startPos.x() + endPos.x()) / 2,
+          (startPos.y() + endPos.y()) / 2,
+          (startPos.z() + endPos.z()) / 2
+        );
+        
+        // Update string rotation to point in the right direction
+        direction.normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        string.quaternion.setFromUnitVectors(up, direction);
+        
+        // Update string length
+        string.scale.y = length / string.geometry.parameters.height;
       }
     } catch (error) {
       console.error(`Error updating soft body string ${i}:`, error);
-      // Fall back to rigid body update for this string if soft body update fails
-      updateStringPhysics(cradle);
     }
   }
 }
