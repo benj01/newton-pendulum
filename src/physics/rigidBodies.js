@@ -112,10 +112,8 @@ function createFrameBodies(cradle, physics, physicsWorld) {
     const motionState = new physics.btDefaultMotionState(transform);
     const localInertia = new physics.btVector3(0, 0, 0);
     
-    // Give frame a proper mass
-    const mass = 5.0; // Substantial mass to make it stable
-    shape.calculateLocalInertia(mass, localInertia);
-    
+    // Make frame static but with proper configuration for anchoring
+    const mass = 0.0; // Static body
     const rbInfo = new physics.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
     const body = new physics.btRigidBody(rbInfo);
     
@@ -123,9 +121,29 @@ function createFrameBodies(cradle, physics, physicsWorld) {
     body.setFriction(physicsConfig.frame.friction);
     body.setRestitution(physicsConfig.frame.restitution);
     
-    // Ensure the body is active
+    // Configure for proper anchoring
+    body.setCollisionFlags(body.getCollisionFlags() | 1); // CF_STATIC_OBJECT
     body.setActivationState(4); // DISABLE_DEACTIVATION
-    body.activate(true);
+    
+    // Debug frame body creation
+    console.log(`Frame ${index} created:`, {
+      dimensions: {
+        width: frame.geometry.parameters.width,
+        height: frame.geometry.parameters.height,
+        depth: frame.geometry.parameters.depth
+      },
+      position: {
+        x: frame.position.x,
+        y: frame.position.y,
+        z: frame.position.z
+      },
+      flags: {
+        collisionFlags: body.getCollisionFlags()
+      },
+      physics: {
+        isStatic: (body.getCollisionFlags() & 1) !== 0
+      }
+    });
     
     // Add name for collision logging
     body.name = `frame_${index}`;

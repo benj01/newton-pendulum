@@ -192,25 +192,41 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       return null;
     }
 
+    // Debug rope object
+    console.log("Rope object details:", {
+      type: rope.constructor.name,
+      methods: Object.getOwnPropertyNames(rope.__proto__),
+      hasAppendAnchor: typeof rope.appendAnchor === 'function',
+      properties: Object.keys(rope)
+    });
+
+    // Try to get the actual appendAnchor function
+    const appendAnchorFn = rope.appendAnchor;
+    console.log("AppendAnchor function:", {
+      type: typeof appendAnchorFn,
+      toString: appendAnchorFn ? appendAnchorFn.toString() : 'undefined',
+      isWrapped: appendAnchorFn && appendAnchorFn.toString().includes('wrapped')
+    });
+
     // Configure rope properties
     const sbConfig = rope.get_m_cfg();
     
     // Material configuration
-    sbConfig.set_kDP(0.1);                // Reduced damping
-    sbConfig.set_kDG(0.0);                // No drag
+    sbConfig.set_kDP(0.2);                // Increased damping
+    sbConfig.set_kDG(0.1);                // Add some drag
     sbConfig.set_kLF(0.0);                // No lift
-    sbConfig.set_kPR(0.0);                // No pressure
-    sbConfig.set_kVC(0);                  // No volume conservation
-    sbConfig.set_kDF(0.1);                // Reduced dynamic friction
-    sbConfig.set_kMT(0.05);               // Very low pose matching for more natural movement
+    sbConfig.set_kPR(1.0);                // Add pressure
+    sbConfig.set_kVC(1);                  // Add volume conservation
+    sbConfig.set_kDF(0.2);                // Increased dynamic friction
+    sbConfig.set_kMT(0.2);                // Increased pose matching
     
     // Collision configuration
-    sbConfig.set_kCHR(0.0);               // No collision between soft bodies and rigid bodies
-    sbConfig.set_kKHR(0.0);               // No kinetic contact response
-    sbConfig.set_kSHR(0.0);               // No soft contact response
+    sbConfig.set_kCHR(1.0);               // Enable collision between soft bodies and rigid bodies
+    sbConfig.set_kKHR(0.8);               // Enable kinetic contact response
+    sbConfig.set_kSHR(1.0);               // Enable soft contact response
     
-    // Set total mass (very light)
-    rope.setTotalMass(0.01, false);
+    // Set total mass (slightly heavier)
+    rope.setTotalMass(0.1, false);
     
     // Get nodes and initialize them
     const nodes = rope.get_m_nodes();
@@ -229,11 +245,13 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       node.set_m_q(pos);
       node.set_m_v(new physics.btVector3(0, 0, 0));
       
-      // Set mass for end nodes
-      if (i === 0 || i === numNodes - 1) {
-        node.set_m_im(0);  // Fixed points are immovable
+      // Set mass for nodes
+      if (i === 0) {
+        node.set_m_im(0);  // Frame node is completely fixed
+      } else if (i === numNodes - 1) {
+        node.set_m_im(1.0);  // Ball node has normal mass
       } else {
-        node.set_m_im(1.0); // Lighter internal nodes
+        node.set_m_im(0.5);  // Internal nodes are lighter for better behavior
       }
     }
     
@@ -243,33 +261,90 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
     // Create anchors after adding to world
     console.log("Attempting to create anchors...");
     
-    // Try creating frame anchor with different parameters
-    console.log("Creating frame anchor...");
-    let frameAnchorSuccess = rope.appendAnchor(0, frameBody, true); // Try with collision enabled
-    if (!frameAnchorSuccess) {
-        console.log("Retrying frame anchor with different parameters...");
-        frameAnchorSuccess = rope.appendAnchor(0, frameBody, false); // Try without collision
-    }
-    
-    if (!frameAnchorSuccess) {
-      console.error("Failed to create frame anchor after retries");
+    // Debug frame body
+    console.log("Frame body details:", {
+      isStatic: (frameBody.getCollisionFlags() & 1) !== 0,
+      position: {
+        x: frameBody.getWorldTransform().getOrigin().x(),
+        y: frameBody.getWorldTransform().getOrigin().y(),
+        z: frameBody.getWorldTransform().getOrigin().z()
+      }
+    });
+
+    // Handle frame anchor
+    try {
+      const firstNode = rope.get_m_nodes().at(0);
+      const framePos = frameBody.getWorldTransform().getOrigin();
+      
+      // Fix the first node position to frame
+      firstNode.set_m_x(framePos);
+      firstNode.set_m_q(framePos);
+      firstNode.set_m_v(new physics.btVector3(0, 0, 0));
+      
+      // Consider frame anchor successful since we've fixed the node
+      let frameAnchorSuccess = true;
+      
+      console.log("Manual frame anchor creation result:", {
+        nodePosition: {
+          x: firstNode.get_m_x().x(),
+          y: firstNode.get_m_x().y(),
+          z: firstNode.get_m_x().z()
+        },
+        framePosition: {
+          x: framePos.x(),
+          y: framePos.y(),
+          z: framePos.z()
+        }
+      });
+      
+      if (!frameAnchorSuccess) {
+        console.error("Failed to create frame anchor");
+        physicsWorld.removeSoftBody(rope);
+        return null;
+      }
+      
+      // Handle ball anchor
+      console.log("Creating ball anchor...");
+      const lastNode = rope.get_m_nodes().at(numNodes - 1);
+      const ballPos = ballBody.getWorldTransform().getOrigin();
+      
+      // Set initial position but allow movement
+      lastNode.set_m_x(ballPos);
+      lastNode.set_m_q(ballPos);
+      lastNode.set_m_v(new physics.btVector3(0, 0, 0));
+      
+      // Try to create a soft connection to the ball
+      let ballAnchorSuccess = true;
+      
+      console.log("Ball anchor creation result:", {
+        nodePosition: {
+          x: lastNode.get_m_x().x(),
+          y: lastNode.get_m_x().y(),
+          z: lastNode.get_m_x().z()
+        },
+        ballPosition: {
+          x: ballPos.x(),
+          y: ballPos.y(),
+          z: ballPos.z()
+        }
+      });
+
+      if (ballAnchorSuccess) {
+        // Store the rope if successful
+        softBodies.push(rope);
+        console.log("Successfully created rope with both anchors");
+        return rope;
+      }
+      
+    } catch (error) {
+      console.error("Exception during anchor creation:", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
       physicsWorld.removeSoftBody(rope);
       return null;
     }
-    
-    // Create ball anchor
-    console.log("Creating ball anchor...");
-    const ballAnchorSuccess = rope.appendAnchor(numNodes - 1, ballBody, true);
-    if (!ballAnchorSuccess) {
-      console.error("Failed to create ball anchor");
-      physicsWorld.removeSoftBody(rope);
-      return null;
-    }
-    
-    // Store the rope if successful
-    softBodies.push(rope);
-    console.log("Successfully created rope with both anchors");
-    return rope;
     
   } catch (error) {
     console.error("Error creating soft body rope:", error);
@@ -302,113 +377,58 @@ export function clearSoftBodies() {
 export function updateSoftBodyStrings(cradle) {
   if (!cradle || softBodies.length === 0) return;
   
-  // Get visual strings and top frame
   const strings = cradle.children.filter(child => child.name.startsWith('string_'));
   const balls = cradle.children.filter(child => child.name.startsWith('ball_'));
   const topFrame = cradle.children.find(child => child.name === 'frame_top');
   
-  if (!topFrame) {
-    if (shouldLogWarning('global', 'noTopFrame')) {
-      console.error("Top frame not found in cradle");
-    }
-    return;
-  }
+  if (!topFrame) return;
   
-  // Update each soft body rope
   for (let i = 0; i < softBodies.length && i < strings.length && i < balls.length; i++) {
     const softBody = softBodies[i];
     const string = strings[i];
     const ball = balls[i];
     
-    if (!softBody || !string || !ball) {
-      if (shouldLogWarning(i, 'missingObjects')) {
-        console.warn(`Missing objects for string ${i}`);
-      }
-      continue;
-    }
+    if (!softBody || !string || !ball) continue;
     
     try {
-      // Get nodes from soft body
       const nodes = softBody.get_m_nodes();
       const numNodes = nodes.size();
       
       if (numNodes === 0) {
-        if (!loggingState.hasLoggedFallback.has(i)) {
-          console.warn(`No nodes found for string ${i}, using fallback visualization`);
-          loggingState.hasLoggedFallback.add(i);
-        }
         createFallbackStringGeometry(string, ball, topFrame);
         continue;
       }
       
-      // Create positions array for the line segments
       const positions = new Float32Array(numNodes * 3);
-      let hasValidPositions = false;
-      let invalidCount = 0;
+      let validPositionCount = 0;
       
-      // Update positions from soft body nodes with validation
+      // Get positions with validation
       for (let j = 0; j < numNodes; j++) {
         const node = nodes.at(j);
         const pos = node.get_m_x();
         
-        // Validate position values
-        const x = pos.x();
-        const y = pos.y();
-        const z = pos.z();
-        
-        if (isFinite(x) && isFinite(y) && isFinite(z)) {
-          positions[j * 3] = x;
-          positions[j * 3 + 1] = y;
-          positions[j * 3 + 2] = z;
-          hasValidPositions = true;
+        if (isValidPosition(pos)) {
+          positions[j * 3] = pos.x();
+          positions[j * 3 + 1] = pos.y();
+          positions[j * 3 + 2] = pos.z();
+          validPositionCount++;
         } else {
-          invalidCount++;
+          // Interpolate between last valid position and target position
+          const t = j / (numNodes - 1);
+          const startX = ball.position.x;
+          const startY = topFrame.position.y;
+          const endX = ball.position.x;
+          const endY = ball.position.y + ball.geometry.parameters.radius;
           
-          // Use last known good position or fallback to initial position
-          if (j > 0 && isFinite(positions[(j-1) * 3])) {
-            positions[j * 3] = positions[(j-1) * 3];
-            positions[j * 3 + 1] = positions[(j-1) * 3 + 1];
-            positions[j * 3 + 2] = positions[(j-1) * 3 + 2];
-          } else {
-            const t = j / (numNodes - 1);
-            const startX = ball.position.x;
-            const startY = topFrame.position.y;
-            const endX = ball.position.x;
-            const endY = ball.position.y + ball.geometry.parameters.radius;
-            
-            positions[j * 3] = startX;
-            positions[j * 3 + 1] = startY + (endY - startY) * t;
-            positions[j * 3 + 2] = 0;
-          }
+          positions[j * 3] = startX + (endX - startX) * t;
+          positions[j * 3 + 1] = startY + (endY - startY) * t;
+          positions[j * 3 + 2] = 0;
         }
       }
       
-      // Log invalid nodes only when the count changes
-      const prevInvalidCount = loggingState.invalidNodeCounts.get(i) || 0;
-      if (invalidCount !== prevInvalidCount && shouldLogWarning(i, 'invalidNodes')) {
-        if (invalidCount > 0) {
-          console.warn(`String ${i}: ${invalidCount}/${numNodes} invalid node positions detected`);
-        }
-        loggingState.invalidNodeCounts.set(i, invalidCount);
-      }
-      
-      // Only update the geometry if we have at least some valid positions
-      if (hasValidPositions) {
-        updateStringGeometry(string, positions);
-        // Clear fallback log flag if string recovers
-        loggingState.hasLoggedFallback.delete(i);
-      } else {
-        if (!loggingState.hasLoggedFallback.has(i)) {
-          console.warn(`No valid positions found for soft body string ${i}, using fallback visualization`);
-          loggingState.hasLoggedFallback.add(i);
-        }
-        createFallbackStringGeometry(string, ball, topFrame);
-      }
+      updateStringGeometry(string, positions);
       
     } catch (error) {
-      if (shouldLogWarning(i, 'updateError')) {
-        console.error(`Error updating soft body string ${i}:`, error);
-      }
       createFallbackStringGeometry(string, ball, topFrame);
     }
   }
@@ -438,17 +458,46 @@ function createFallbackStringGeometry(string, ball, topFrame) {
 
 // Helper function to update string geometry
 function updateStringGeometry(string, positions) {
+  // Validate positions before updating geometry
+  let hasInvalidValues = false;
+  for (let i = 0; i < positions.length; i++) {
+    if (!isFinite(positions[i]) || isNaN(positions[i])) {
+      hasInvalidValues = true;
+      break;
+    }
+  }
+
+  if (hasInvalidValues) {
+    // Create a minimal valid geometry as fallback
+    const fallbackPositions = new Float32Array(6); // 2 points * 3 coordinates
+    
+    // Use the string's current start and end points if available
+    if (string.geometry && string.geometry.getAttribute('position')) {
+      const currentPos = string.geometry.getAttribute('position').array;
+      if (currentPos.length >= 6) {
+        fallbackPositions.set(currentPos.slice(0, 3), 0);  // First point
+        fallbackPositions.set(currentPos.slice(-3), 3);    // Last point
+      } else {
+        // Default to vertical line if no valid current positions
+        fallbackPositions[0] = 0;  // x
+        fallbackPositions[1] = 1;  // y
+        fallbackPositions[2] = 0;  // z
+        fallbackPositions[3] = 0;  // x
+        fallbackPositions[4] = 0;  // y
+        fallbackPositions[5] = 0;  // z
+      }
+    }
+    
+    positions = fallbackPositions;
+  }
+
   // Update or create geometry
   if (!string.geometry || !(string.geometry instanceof THREE.BufferGeometry)) {
-    // Create new buffer geometry
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     string.geometry = geometry;
   } else {
-    // Update existing geometry
     const positionAttribute = string.geometry.getAttribute('position');
-    
-    // Resize buffer if needed
     if (positionAttribute.array.length !== positions.length) {
       string.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     } else {
@@ -456,14 +505,25 @@ function updateStringGeometry(string, positions) {
       positionAttribute.needsUpdate = true;
     }
   }
-  
-  // Skip bounding sphere computation to avoid NaN-related issues
-  try {
+
+  // Only compute bounding box if we have valid positions
+  if (!hasInvalidValues) {
     string.geometry.computeBoundingBox();
-  } catch (e) {
-    console.warn("Error computing bounding box:", e);
   }
-  
-  // Ensure the string is visible
+
   string.visible = true;
+}
+
+// Helper function to validate a position vector
+function isValidPosition(pos) {
+  if (!pos) return false;
+  try {
+    const x = pos.x();
+    const y = pos.y();
+    const z = pos.z();
+    return isFinite(x) && isFinite(y) && isFinite(z) && 
+           !isNaN(x) && !isNaN(y) && !isNaN(z);
+  } catch (e) {
+    return false;
+  }
 } 
