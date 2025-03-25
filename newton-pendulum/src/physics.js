@@ -38,6 +38,7 @@ export function getBallBodies() {
 }
 
 // Initialize Ammo.js physics
+// Modified portion of the initPhysics function in physics.js
 export async function initPhysics() {
   // Create a loading message
   const loadingMsg = document.createElement('div');
@@ -88,15 +89,42 @@ export async function initPhysics() {
     
     console.log("Soft body support:", hasSoftBodySupport);
     
-    let dispatcher, broadphase, solver;
+    let dispatcher, broadphase, solver, softBodySolver;
     
     try {
-      // Create standard physics world with rigid bodies first (safer)
-      const collisionConfiguration = new physics.btDefaultCollisionConfiguration();
-      dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
-      broadphase = new physics.btDbvtBroadphase();
-      solver = new physics.btSequentialImpulseConstraintSolver();
-      physicsWorld = new physics.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
+      // Create the appropriate physics world based on soft body support
+      if (hasSoftBodySupport) {
+        // Create soft body physics world
+        const collisionConfiguration = new physics.btSoftBodyRigidBodyCollisionConfiguration();
+        dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
+        broadphase = new physics.btDbvtBroadphase();
+        solver = new physics.btSequentialImpulseConstraintSolver();
+        softBodySolver = new physics.btDefaultSoftBodySolver();
+        
+        physicsWorld = new physics.btSoftRigidDynamicsWorld(
+          dispatcher, broadphase, solver, collisionConfiguration, softBodySolver
+        );
+        
+        // Initialize soft body world info right away
+        softBodyWorldInfo = new physics.btSoftBodyWorldInfo();
+        softBodyWorldInfo.set_m_broadphase(broadphase);
+        softBodyWorldInfo.set_m_dispatcher(dispatcher);
+        softBodyWorldInfo.set_m_gravity(new physics.btVector3(0, config.gravityConstant, 0));
+        
+        // Create soft body helpers
+        softBodyHelpers = new physics.btSoftBodyHelpers();
+        
+        console.log("Soft body physics world created successfully");
+      } else {
+        // Create standard physics world with rigid bodies
+        const collisionConfiguration = new physics.btDefaultCollisionConfiguration();
+        dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
+        broadphase = new physics.btDbvtBroadphase();
+        solver = new physics.btSequentialImpulseConstraintSolver();
+        physicsWorld = new physics.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
+        
+        console.log("Standard rigid body physics world created");
+      }
       
       // Set gravity
       physicsWorld.setGravity(new physics.btVector3(0, config.gravityConstant, 0));
