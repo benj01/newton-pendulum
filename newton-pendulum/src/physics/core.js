@@ -28,16 +28,28 @@ function checkSoftBodyCapability(physics) {
 export async function initPhysics() {
   try {
     // Make sure Ammo is available globally from the script tag
-    if (typeof Ammo === 'undefined') {
+    if (typeof Ammo === 'undefined' || !window.AmmoReadyPromise) {
       console.warn('Waiting for Ammo.js to load...');
       return null;
     }
     
-    // Initialize Ammo.js with proper await
-    physics = await Ammo();
+    // Initialize Ammo.js using the ready promise
+    try {
+      physics = await window.AmmoReadyPromise;
+      console.log('Ammo.js initialized:', typeof physics);
+    } catch (error) {
+      console.error('Error initializing Ammo.js:', error);
+      return null;
+    }
     
-    // Create collision configuration
-    const collisionConfiguration = new physics.btDefaultCollisionConfiguration();
+    // Explicitly check and log soft body capability first
+    const softBodyCapable = checkSoftBodyCapability(physics);
+    console.log(`Ammo.js soft body capability: ${softBodyCapable ? 'Available' : 'Not available'}`);
+    
+    // Create appropriate collision configuration
+    const collisionConfiguration = softBodyCapable ? 
+      new physics.btSoftBodyRigidBodyCollisionConfiguration() :
+      new physics.btDefaultCollisionConfiguration();
     
     // Create dispatcher
     const dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
@@ -48,23 +60,23 @@ export async function initPhysics() {
     // Create solver
     const solver = new physics.btSequentialImpulseConstraintSolver();
     
-    // Create world
-    physicsWorld = new physics.btDiscreteDynamicsWorld(
-      dispatcher,
-      broadphase,
-      solver,
-      collisionConfiguration
-    );
-    
-    // Set gravity
+    // Create gravity vector
     const gravity = new physics.btVector3(0, physicsConfig.gravityConstant, 0);
-    physicsWorld.setGravity(gravity);
     
-    // Explicitly check and log soft body capability
-    const softBodyCapable = checkSoftBodyCapability(physics);
-    console.log(`Ammo.js soft body capability: ${softBodyCapable ? 'Available' : 'Not available'}`);
-    
+    // Create world based on capability
     if (softBodyCapable) {
+      // Create soft body solver
+      const softBodySolver = new physics.btDefaultSoftBodySolver();
+      
+      // Create world with soft body support
+      physicsWorld = new physics.btSoftRigidDynamicsWorld(
+        dispatcher,
+        broadphase,
+        solver,
+        collisionConfiguration,
+        softBodySolver
+      );
+      
       // Initialize soft body world info
       softBodyWorldInfo = new physics.btSoftBodyWorldInfo();
       softBodyWorldInfo.set_m_broadphase(broadphase);
@@ -73,7 +85,18 @@ export async function initPhysics() {
       
       // Initialize soft body helpers
       softBodyHelpers = new physics.btSoftBodyHelpers();
+    } else {
+      // Create regular dynamics world if soft body not supported
+      physicsWorld = new physics.btDiscreteDynamicsWorld(
+        dispatcher,
+        broadphase,
+        solver,
+        collisionConfiguration
+      );
     }
+    
+    // Set gravity for the world
+    physicsWorld.setGravity(gravity);
     
     return {
       physics,
@@ -83,7 +106,8 @@ export async function initPhysics() {
       dispatcher,
       broadphase,
       solver,
-      collisionConfiguration
+      collisionConfiguration,
+      hasSoftBodySupport: softBodyCapable
     };
   } catch (error) {
     console.error('Error initializing Ammo.js:', error);

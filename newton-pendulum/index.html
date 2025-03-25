@@ -17,7 +17,23 @@
         return path;
       };
     </script>
-    <script src="/lib/ammo.wasm.js"></script>
+    <script src="/lib/ammo.wasm.js" async></script>
+    <script>
+      // Wait for Ammo.js to be ready
+      window.AmmoReadyPromise = new Promise((resolve) => {
+        if (typeof Ammo === 'function') {
+          resolve(Ammo());
+        } else {
+          window.addEventListener('load', async () => {
+            if (typeof Ammo === 'function') {
+              resolve(await Ammo());
+            } else {
+              resolve(Ammo);
+            }
+          });
+        }
+      });
+    </script>
   </head>
   <body>
     <div id="app"></div>

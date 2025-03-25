@@ -7,6 +7,7 @@ import { initScene, createCradle, updateScene } from './scene.js';
 import { initPhysicsSystem, updatePhysics, applyBallImpulse, cleanupPhysics, restartPhysics } from './physics/index.js';
 import { UserConsole } from './ui/console.js';
 import { sceneConfig, physicsConfig, visualConfig } from './config/index.js';
+import { displayAmmoCapabilities } from './checkammo.js';
 
 // Global state
 let scene, camera, renderer, controls;
@@ -18,6 +19,9 @@ let isAnimating = true;
 // Initialize the application
 async function init() {
   try {
+    // Display Ammo.js capabilities first
+    displayAmmoCapabilities();
+    
     // Initialize scene
     ({ scene, camera, renderer, controls } = initScene());
     
