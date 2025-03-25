@@ -21,6 +21,8 @@ let ammoTmpQuat;
 let ballBodies = [];
 let frameBodies = [];
 let constraints = [];
+let stringBodies = [];
+let stringConstraints = [];
 
 // Export physics instance
 export function getPhysics() {
@@ -119,7 +121,159 @@ export function createPhysicsBodies(cradle) {
     const constraint = createConstraint(ballBody, roofPoint, ball);
     constraints.push(constraint);
   }
+  createStringPhysics(cradle);
 }
+
+export function createStringPhysics(cradle) {
+  // Clean up any existing string physics objects
+  if (stringBodies.length > 0) {
+    // Remove constraints first
+    for (let i = 0; i < stringConstraints.length; i++) {
+      if (stringConstraints[i]) {
+        physicsWorld.removeConstraint(stringConstraints[i]);
+      }
+    }
+    
+    // Then remove bodies
+    for (let i = 0; i < stringBodies.length; i++) {
+      if (stringBodies[i]) {
+        physicsWorld.removeRigidBody(stringBodies[i]);
+      }
+    }
+    
+    stringBodies = [];
+    stringConstraints = [];
+  }
+  
+  // Configuration for string segments
+  const segmentsPerString = 8;
+  const stringSegmentMass = 0.01; // Very light segments
+  const stringSegmentRadius = 0.03;
+  
+  // Create string segments and constraints for each ball
+  for (let ballIndex = 0; ballIndex < ballBodies.length; ballIndex++) {
+    const ballBody = ballBodies[ballIndex];
+    const ball = ballBody.threeObject;
+    
+    // Calculate positions for string segments
+    const topY = ball.position.y + 6; // Top attachment point
+    const bottomY = ball.position.y + ball.geometry.parameters.radius;
+    const segmentHeight = (topY - bottomY) / segmentsPerString;
+    
+    // Array to store this string's bodies
+    const currentStringBodies = [];
+    
+    // Create the top fixed anchor point (static body)
+    const anchorShape = new physics.btSphereShape(0.05);
+    const anchorTransform = new physics.btTransform();
+    anchorTransform.setIdentity();
+    anchorTransform.setOrigin(new physics.btVector3(ball.position.x, topY, 0));
+    
+    const anchorMotionState = new physics.btDefaultMotionState(anchorTransform);
+    const anchorBody = new physics.btRigidBody(
+      new physics.btRigidBodyConstructionInfo(
+        0, // Mass of 0 makes it static
+        anchorMotionState,
+        anchorShape,
+        new physics.btVector3(0, 0, 0)
+      )
+    );
+    
+    physicsWorld.addRigidBody(anchorBody);
+    currentStringBodies.push(anchorBody);
+    
+    // Create each segment as a physical body
+    let prevBody = anchorBody;
+    
+    for (let i = 0; i < segmentsPerString; i++) {
+      // Create segment shape
+      const segmentShape = new physics.btCapsuleShape(
+        stringSegmentRadius, // radius
+        segmentHeight * 0.8 // height (slightly shorter to allow for bending)
+      );
+      
+      // Calculate segment position (top down)
+      const segmentY = topY - (i + 0.5) * segmentHeight;
+      const segmentTransform = new physics.btTransform();
+      segmentTransform.setIdentity();
+      segmentTransform.setOrigin(new physics.btVector3(ball.position.x, segmentY, 0));
+      
+      // Create motion state
+      const segmentMotionState = new physics.btDefaultMotionState(segmentTransform);
+      
+      // Calculate inertia
+      const segmentInertia = new physics.btVector3(0, 0, 0);
+      segmentShape.calculateLocalInertia(stringSegmentMass, segmentInertia);
+      
+      // Create rigid body
+      const segmentBody = new physics.btRigidBody(
+        new physics.btRigidBodyConstructionInfo(
+          stringSegmentMass,
+          segmentMotionState,
+          segmentShape,
+          segmentInertia
+        )
+      );
+      
+      // Set physical properties for string behavior
+      segmentBody.setRestitution(0.1); // Not very bouncy
+      segmentBody.setFriction(0.9);    // High friction
+      segmentBody.setDamping(0.7, 0.7); // Quite a bit of damping
+      
+      // Add to world
+      physicsWorld.addRigidBody(segmentBody);
+      currentStringBodies.push(segmentBody);
+      
+      // Create constraint connecting to previous segment
+      const pivotInPrev = new physics.btVector3(0, -segmentHeight/2, 0);
+      const pivotInCurrent = new physics.btVector3(0, segmentHeight/2, 0);
+      
+      const constraint = new physics.btPoint2PointConstraint(
+        prevBody,
+        segmentBody,
+        pivotInPrev,
+        pivotInCurrent
+      );
+      
+      // Make the constraint a bit stiff but still allow bending
+      if (constraint.setting) {
+        constraint.setting.set_m_tau(0.3); // lower = more responsive
+        constraint.setting.set_m_damping(0.7); // higher = more damping
+      }
+      
+      physicsWorld.addConstraint(constraint, true);
+      stringConstraints.push(constraint);
+      
+      // Current becomes previous for next iteration
+      prevBody = segmentBody;
+    }
+    
+    // Finally, connect the last segment to the ball
+    const lastSegment = currentStringBodies[currentStringBodies.length - 1];
+    
+    const pivotInLastSegment = new physics.btVector3(0, -segmentHeight/2, 0);
+    const pivotInBall = new physics.btVector3(0, ball.geometry.parameters.radius, 0);
+    
+    const ballConstraint = new physics.btPoint2PointConstraint(
+      lastSegment,
+      ballBody,
+      pivotInLastSegment,
+      pivotInBall
+    );
+    
+    physicsWorld.addConstraint(ballConstraint, true);
+    stringConstraints.push(ballConstraint);
+    
+    // Add all bodies of this string to the main array
+    stringBodies.push(...currentStringBodies);
+  }
+  
+  return {
+    bodies: stringBodies,
+    constraints: stringConstraints
+  };
+}
+
 
 // Create a rigid body for a ball
 function createBallBody(ball) {
@@ -294,16 +448,41 @@ export function syncPhysicsObjects() {
   }
 }
 
-export function updateStringPhysics() {
-  // For a more physically accurate simulation, you could add
-  // small invisible rigid bodies for each string segment
-  // and connect them with point-to-point constraints
+export function updateStringPhysics(cradle) {
+  // Get visual string segments
+  const visualStrings = cradle.strings;
   
-  // For a simplified approach, we're just updating the visual 
-  // representation based on the ball positions
+  // Sync physics string segments to visual representation
+  let bodyIndex = 0;
   
-  // This function is a placeholder if you want to extend with
-  // full physics for the strings later
+  for (let stringIndex = 0; stringIndex < visualStrings.length; stringIndex++) {
+    const segments = visualStrings[stringIndex];
+    
+    // Skip the anchor body (first body in each string)
+    bodyIndex++;
+    
+    // Update each segment in the string
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+      if (bodyIndex < stringBodies.length) {
+        const body = stringBodies[bodyIndex];
+        const visualSegment = segments[segmentIndex];
+        
+        // Get physics transform
+        const motionState = body.getMotionState();
+        motionState.getWorldTransform(tmpTrans);
+        
+        // Get position and rotation
+        const position = tmpTrans.getOrigin();
+        const rotation = tmpTrans.getRotation();
+        
+        // Update visual segment
+        visualSegment.position.set(position.x(), position.y(), position.z());
+        visualSegment.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+        
+        bodyIndex++;
+      }
+    }
+  }
 }
 
 // Apply an impulse to a ball
