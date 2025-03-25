@@ -35,9 +35,9 @@ export const physicsConfig = {
   // Soft body settings (if supported)
   softBody: {
     enabled: true,
-    segmentsPerString: 8,
-    mass: 0.1,
-    damping: 0.1,
+    segmentsPerString: 14,
+    mass: 0.07,
+    damping: 0.08,
     lift: 0.1,
     pressure: 50,
     volumeConservation: 20,
