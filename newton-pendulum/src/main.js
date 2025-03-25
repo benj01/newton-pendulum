@@ -1,7 +1,15 @@
 // main.js - Application entry point
 import './style.css';
 import { initScene, createCradle, updateScene, onWindowResize } from './scene.js';
-import { initPhysics, createPhysicsBodies, stepPhysics, syncPhysicsObjects, applyImpulse, updateStringPhysics } from './physics.js';
+import { 
+  initPhysics, 
+  createPhysicsBodies, 
+  stepPhysics, 
+  syncPhysicsObjects, 
+  applyImpulse, 
+  updateStringPhysics,
+  updateSoftBodyStrings
+} from './physics.js';
 import { setupControls } from './controls.js';
 import { addInfoText } from './utils.js';
 import { checkAmmoSoftBodySupport } from './checkammo.js';
@@ -12,6 +20,7 @@ let lastTime = 0;
 let cradle = null;
 let physicsWorld = null;
 let sceneObjects = null;
+let hasSoftBodySupport = false;
 
 // Initialize the application
 async function init() {
@@ -43,6 +52,10 @@ async function init() {
   physicsWorld = physicsInit.physicsWorld;
   const physics = physicsInit.physics;
   
+  // Store soft body support flag
+  hasSoftBodySupport = physicsInit.hasSoftBodySupport;
+  console.log("Soft body support:", hasSoftBodySupport);
+  
   // Create cradle objects both visually and in physics
   cradle = createCradle();
   createPhysicsBodies(cradle);
@@ -66,6 +79,9 @@ async function init() {
   
   // Set up fixed camera - since we removed camera controls
   setupFixedCamera();
+  
+  // Display soft body status on screen
+  displaySoftBodyStatus(hasSoftBodySupport);
   
   // Start animation loop
   running = true;
@@ -102,8 +118,12 @@ function animate() {
   // Sync physics with visual objects
   syncPhysicsObjects();
   
-  // Update string physics
-  updateStringPhysics(cradle);
+  // Update string physics (use soft body or fallback to rigid body)
+  if (hasSoftBodySupport) {
+    updateSoftBodyStrings(cradle);
+  } else {
+    updateStringPhysics(cradle);
+  }
   
   // Update and render scene
   updateScene();
@@ -115,6 +135,27 @@ function startAnimation() {
     // Apply impulse to first ball (-5 in x direction)
     applyImpulse(0, { x: -10, y: 0, z: 0 });
   }
+}
+
+// Display soft body support status
+function displaySoftBodyStatus(supported) {
+  const statusDiv = document.createElement('div');
+  statusDiv.id = 'softbody-status';
+  statusDiv.style.position = 'absolute';
+  statusDiv.style.top = '40px';
+  statusDiv.style.width = '100%';
+  statusDiv.style.textAlign = 'center';
+  statusDiv.style.color = supported ? '#44ff44' : '#ff4444';
+  statusDiv.style.fontFamily = 'system-ui, sans-serif';
+  statusDiv.style.padding = '5px';
+  statusDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  statusDiv.style.zIndex = '100';
+  
+  statusDiv.textContent = supported ? 
+    "Soft Body Physics: Enabled (Using Soft Ropes)" : 
+    "Soft Body Physics: Not Available (Using Rigid Body Fallback)";
+  
+  document.body.appendChild(statusDiv);
 }
 
 // checkAmmoSoftBodySupport();

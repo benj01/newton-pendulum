@@ -18,6 +18,9 @@ const config = {
   frameThickness: 0.5
 };
 
+// Store fixed attachment points for strings
+let stringAttachPoints = [];
+
 // Initialize the Three.js scene
 export function initScene() {
   // Create scene
@@ -170,11 +173,10 @@ function createBalls() {
   }
 }
 
-// Store fixed attachment points for strings
-let stringAttachPoints = [];
+// Create strings for the cradle
 function createStrings() {
   const stringMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x000000,
+    color: 0x222222,
     roughness: 0.5,
     metalness: 0.2
   });
@@ -182,7 +184,7 @@ function createStrings() {
   stringAttachPoints = []; // Clear any existing points
   strings = []; // Clear existing strings
   
-  // Number of segments per string (more segments = more flexible)
+  // Number of segments per string (more segments = more flexible visualization)
   const segmentsPerString = 8;
   
   for (let i = 0; i < balls.length; i++) {
@@ -232,7 +234,7 @@ function createFloor() {
   scene.add(floor);
 }
 
-// Update strings based on ball positions
+// This function can be kept as is for the rigid body fallback, but won't be used for soft bodies
 function updateStrings() {
   const tempVec = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
@@ -256,7 +258,6 @@ function updateStrings() {
       const t = (j + 0.5) / segmentsCount; // Parametric position along string (0 to 1)
       
       // Simple quadratic interpolation for a natural bend
-      // You can replace this with a more sophisticated catenary curve
       const tempX = topAttachPoint.x * (1 - t) + ballAttachPoint.x * t;
       const tempY = topAttachPoint.y * (1 - t) + ballAttachPoint.y * t;
       const tempZ = topAttachPoint.z * (1 - t) + ballAttachPoint.z * t;
@@ -307,8 +308,8 @@ function updateStrings() {
 export function updateScene() {
   if (!renderer || !scene || !camera) return;
   
-  // Update strings to follow balls
-  updateStrings();
+  // Update strings to follow balls - This is now handled by updateSoftBodyStrings in physics.js
+  // when soft body physics is available. The main.js file will call the appropriate function.
   
   // Render the scene
   renderer.render(scene, camera);

@@ -1,173 +1,172 @@
-// Function to check if Ammo.js has soft body support
+// checkammo.js - Utility to check Ammo.js capabilities
+
 export function checkAmmoSoftBodySupport() {
     console.log("Checking Ammo.js soft body support...");
     
-    // Create a visible log on the page
-    const logDiv = document.createElement('div');
-    logDiv.style.position = 'absolute';
-    logDiv.style.top = '10px';
-    logDiv.style.left = '10px';
-    logDiv.style.backgroundColor = 'rgba(0,0,0,0.7)';
-    logDiv.style.color = 'white';
-    logDiv.style.padding = '10px';
-    logDiv.style.borderRadius = '5px';
-    logDiv.style.fontFamily = 'monospace';
-    logDiv.style.zIndex = '1000';
-    logDiv.style.maxWidth = '80%';
-    logDiv.style.maxHeight = '80%';
-    logDiv.style.overflow = 'auto';
-    document.body.appendChild(logDiv);
-    
-    function log(message, isError = false) {
-      console.log(message);
-      const line = document.createElement('div');
-      line.textContent = message;
-      if (isError) {
-        line.style.color = 'red';
-      } else if (message.includes('✓')) {
-        line.style.color = 'lightgreen';
-      }
-      logDiv.appendChild(line);
-    }
-    
-    // Check if Ammo is available
+    // Make sure Ammo is available
     if (typeof Ammo === 'undefined') {
-      log('❌ Ammo.js is not loaded', true);
-      return false;
+      console.error("Ammo.js is not loaded");
+      return {
+        available: false,
+        error: "Ammo.js is not loaded"
+      };
     }
     
-    log('✓ Ammo.js is loaded');
-    
-    // We'll check for the presence of key soft body classes
-    const softBodyClasses = [
-      'btSoftBodyHelpers',
-      'btSoftBodyWorldInfo',
-      'btSoftRigidDynamicsWorld',
-      'btSoftBodyRigidBodyCollisionConfiguration',
-      'btDefaultSoftBodySolver'
-    ];
-    
-    let allClassesAvailable = true;
-    
-    // First check if classes are directly accessible
-    for (const className of softBodyClasses) {
-      if (typeof Ammo[className] === 'function') {
-        log(`✓ ${className} is available directly`);
-      } else {
-        log(`${className} is not available directly, will check after initialization`);
-        allClassesAvailable = false;
-      }
-    }
-    
-    // If all classes are available, we're good
-    if (allClassesAvailable) {
-      log('✓ Ammo.js has soft body support!');
-      return true;
-    }
-    
-    // If not, we'll need to check after Ammo is initialized
-    log('Will check again after Ammo.js is fully initialized...');
-    
-    // If Ammo is a function, it needs to be initialized
-    if (typeof Ammo === 'function') {
-      log('Ammo.js needs initialization...');
+    // Initialize Ammo if it's a function
+    const checkAmmo = async () => {
+      let physics;
       
-      Ammo().then(function(AmmoLib) {
-        log('Ammo.js has been initialized');
-        
-        // Check for soft body classes after initialization
-        let softBodySupport = true;
-        
-        for (const className of softBodyClasses) {
-          if (typeof AmmoLib[className] === 'function') {
-            log(`✓ ${className} is available after initialization`);
-          } else {
-            log(`❌ ${className} is NOT available after initialization`, true);
-            softBodySupport = false;
-          }
+      try {
+        if (typeof Ammo === 'function') {
+          physics = await Ammo();
+          console.log("Ammo.js initialized from function");
+        } else {
+          physics = Ammo;
+          console.log("Ammo.js already initialized");
         }
         
-        if (softBodySupport) {
-          log('✓ Ammo.js has soft body support!');
-          
-          // Optional: Try to create a simple soft body to confirm
+        // Check for soft body classes
+        const checks = [
+          { name: "btSoftBodyHelpers", available: typeof physics.btSoftBodyHelpers === 'function' },
+          { name: "btSoftBodyWorldInfo", available: typeof physics.btSoftBodyWorldInfo === 'function' },
+          { name: "btSoftBodyRigidBodyCollisionConfiguration", available: typeof physics.btSoftBodyRigidBodyCollisionConfiguration === 'function' },
+          { name: "btSoftRigidDynamicsWorld", available: typeof physics.btSoftRigidDynamicsWorld === 'function' }
+        ];
+        
+        console.table(checks);
+        
+        // Check if all required classes are available
+        const allAvailable = checks.every(check => check.available);
+        
+        // Try to create basic soft body objects
+        if (allAvailable) {
           try {
-            const collisionConfig = new AmmoLib.btSoftBodyRigidBodyCollisionConfiguration();
-            const dispatcher = new AmmoLib.btCollisionDispatcher(collisionConfig);
-            const broadphase = new AmmoLib.btDbvtBroadphase();
-            const solver = new AmmoLib.btSequentialImpulseConstraintSolver();
-            const softBodySolver = new AmmoLib.btDefaultSoftBodySolver();
+            const worldInfo = new physics.btSoftBodyWorldInfo();
+            const helpers = new physics.btSoftBodyHelpers();
             
-            const softRigidWorld = new AmmoLib.btSoftRigidDynamicsWorld(
+            console.log("Successfully created basic soft body objects");
+            
+            // Test creating a soft body world
+            const collisionConfig = new physics.btSoftBodyRigidBodyCollisionConfiguration();
+            const dispatcher = new physics.btCollisionDispatcher(collisionConfig);
+            const broadphase = new physics.btDbvtBroadphase();
+            const solver = new physics.btSequentialImpulseConstraintSolver();
+            const softBodySolver = new physics.btDefaultSoftBodySolver();
+            
+            const world = new physics.btSoftRigidDynamicsWorld(
               dispatcher, broadphase, solver, collisionConfig, softBodySolver
             );
             
-            log('✓ Successfully created a btSoftRigidDynamicsWorld instance');
+            console.log("Successfully created soft body physics world");
             
-            // Try to create a soft body world info
-            const worldInfo = new AmmoLib.btSoftBodyWorldInfo();
-            log('✓ Successfully created btSoftBodyWorldInfo');
+            // Display overall result
+            console.log("%cAmmo.js soft body support: AVAILABLE", "color: green; font-weight: bold");
             
-            // Try to create soft body helpers
-            const helpers = new AmmoLib.btSoftBodyHelpers();
-            log('✓ Successfully created btSoftBodyHelpers');
-            
-            // Clean up
-            AmmoLib.destroy(worldInfo);
-            AmmoLib.destroy(helpers);
-            AmmoLib.destroy(softRigidWorld);
-            AmmoLib.destroy(softBodySolver);
-            AmmoLib.destroy(solver);
-            AmmoLib.destroy(broadphase);
-            AmmoLib.destroy(dispatcher);
-            AmmoLib.destroy(collisionConfig);
-            
-            log('✓ Full soft body functionality confirmed!');
-            return true;
+            return {
+              available: true,
+              details: checks
+            };
           } catch (error) {
-            log(`❌ Error creating soft body instances: ${error.message}`, true);
-            log('Your Ammo.js build might have the classes but not full implementation.', true);
-            return false;
+            console.error("Error creating soft body objects:", error);
+            console.log("%cAmmo.js soft body support: NOT AVAILABLE (creation error)", "color: red; font-weight: bold");
+            
+            return {
+              available: false,
+              error: error.message,
+              details: checks
+            };
           }
         } else {
-          log('❌ Ammo.js does NOT have soft body support', true);
-          log('You need to use a different build of Ammo.js with soft body support.', true);
-          return false;
+          console.log("%cAmmo.js soft body support: NOT AVAILABLE (missing classes)", "color: red; font-weight: bold");
+          
+          return {
+            available: false,
+            error: "Missing required soft body classes",
+            details: checks
+          };
         }
-      }).catch(function(error) {
-        log(`❌ Error initializing Ammo.js: ${error.message}`, true);
-        return false;
-      });
-    } else {
-      // If Ammo is already an object, check the instance
-      log('Ammo.js is already initialized, checking instance...');
-      
-      // Check for soft body classes on the instance
-      let softBodySupport = true;
-      
-      for (const className of softBodyClasses) {
-        if (typeof Ammo[className] === 'function') {
-          log(`✓ ${className} is available in Ammo instance`);
-        } else {
-          log(`❌ ${className} is NOT available in Ammo instance`, true);
-          softBodySupport = false;
-        }
+      } catch (error) {
+        console.error("Error initializing Ammo.js:", error);
+        
+        return {
+          available: false,
+          error: error.message
+        };
       }
-      
-      if (softBodySupport) {
-        log('✓ Ammo.js has soft body support!');
-      } else {
-        log('❌ Ammo.js does NOT have soft body support', true);
-        log('You need to use a different build of Ammo.js with soft body support.', true);
-      }
-      
-      return softBodySupport;
-    }
+    };
+    
+    // Execute the check
+    return checkAmmo();
   }
   
-  // Add this to your main.js before initializing physics
-  // For example, just before the init() function call:
-  /*
-  checkAmmoSoftBodySupport();
-  init();
-  */
+  // Function to create a visual display of Ammo.js capabilities
+  export function displayAmmoCapabilities() {
+    checkAmmoSoftBodySupport().then(result => {
+      // Create UI element to display results
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.top = '10px';
+      container.style.right = '10px';
+      container.style.width = '300px';
+      container.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      container.style.color = 'white';
+      container.style.padding = '10px';
+      container.style.borderRadius = '5px';
+      container.style.fontFamily = 'monospace';
+      container.style.fontSize = '12px';
+      container.style.zIndex = '100';
+      
+      // Create header
+      const header = document.createElement('h3');
+      header.textContent = 'Ammo.js Capabilities';
+      header.style.margin = '0 0 10px 0';
+      container.appendChild(header);
+      
+      // Create soft body status
+      const softBodyStatus = document.createElement('div');
+      softBodyStatus.style.marginBottom = '5px';
+      softBodyStatus.style.color = result.available ? '#44ff44' : '#ff4444';
+      softBodyStatus.textContent = `Soft Body Physics: ${result.available ? 'AVAILABLE ✓' : 'NOT AVAILABLE ✗'}`;
+      container.appendChild(softBodyStatus);
+      
+      // If there's an error, display it
+      if (result.error) {
+        const errorInfo = document.createElement('div');
+        errorInfo.style.color = '#ff4444';
+        errorInfo.textContent = `Error: ${result.error}`;
+        container.appendChild(errorInfo);
+      }
+      
+      // Add details if available
+      if (result.details) {
+        const detailsContainer = document.createElement('div');
+        detailsContainer.style.marginTop = '10px';
+        
+        result.details.forEach(item => {
+          const itemElement = document.createElement('div');
+          itemElement.style.marginBottom = '2px';
+          itemElement.style.color = item.available ? '#44ff44' : '#ff4444';
+          itemElement.textContent = `${item.name}: ${item.available ? '✓' : '✗'}`;
+          detailsContainer.appendChild(itemElement);
+        });
+        
+        container.appendChild(detailsContainer);
+      }
+      
+      // Add button to close the display
+      const closeButton = document.createElement('button');
+      closeButton.textContent = 'Close';
+      closeButton.style.marginTop = '10px';
+      closeButton.style.padding = '5px 10px';
+      closeButton.style.cursor = 'pointer';
+      
+      closeButton.addEventListener('click', () => {
+        document.body.removeChild(container);
+      });
+      
+      container.appendChild(closeButton);
+      
+      // Add to body
+      document.body.appendChild(container);
+    });
+  }
