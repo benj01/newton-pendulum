@@ -183,7 +183,7 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       softBodyWorldInfo,
       ammoPoints[0],
       ammoPoints[ammoPoints.length - 1],
-      numSegments - 1, // Adjust segment count to get correct number of nodes
+      numSegments - 1,
       0
     );
     
@@ -208,26 +208,6 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       isWrapped: appendAnchorFn && appendAnchorFn.toString().includes('wrapped')
     });
 
-    // Configure rope properties
-    const sbConfig = rope.get_m_cfg();
-    
-    // Material configuration
-    sbConfig.set_kDP(0.2);                // Increased damping
-    sbConfig.set_kDG(0.1);                // Add some drag
-    sbConfig.set_kLF(0.0);                // No lift
-    sbConfig.set_kPR(1.0);                // Add pressure
-    sbConfig.set_kVC(1);                  // Add volume conservation
-    sbConfig.set_kDF(0.2);                // Increased dynamic friction
-    sbConfig.set_kMT(0.2);                // Increased pose matching
-    
-    // Collision configuration
-    sbConfig.set_kCHR(1.0);               // Enable collision between soft bodies and rigid bodies
-    sbConfig.set_kKHR(0.8);               // Enable kinetic contact response
-    sbConfig.set_kSHR(1.0);               // Enable soft contact response
-    
-    // Set total mass (slightly heavier)
-    rope.setTotalMass(0.1, false);
-    
     // Get nodes and initialize them
     const nodes = rope.get_m_nodes();
     const numNodes = nodes.size();
@@ -235,6 +215,33 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
     console.log(`Created rope with ${numNodes} nodes`);
     
     // Initialize node positions and properties
+    const anchoringStatus = {
+      positionBased: {
+        frame: false,
+        ball: false
+      },
+      internalLinks: {
+        count: 0,
+        total: numNodes - 1
+      }
+    };
+    
+    // Configure rope material properties for better stability
+    const sbConfig = rope.get_m_cfg();
+    sbConfig.set_kDP(0.1);                // Reduced damping for more natural movement
+    sbConfig.set_kDG(0.1);                // Maintain some drag
+    sbConfig.set_kLF(0.0);                // No lift
+    sbConfig.set_kPR(0.8);                // Slightly reduced pressure
+    sbConfig.set_kVC(0.5);                // Reduced volume conservation
+    sbConfig.set_kDF(0.2);                // Maintain dynamic friction
+    sbConfig.set_kMT(0.2);                // Maintain pose matching
+    
+    // Set material properties for better bending behavior
+    rope.get_m_materials().at(0).set_m_kLST(0.8);  // Linear stiffness
+    rope.get_m_materials().at(0).set_m_kAST(0.8);  // Angular stiffness
+    rope.get_m_materials().at(0).set_m_kVST(0.8);  // Volume stiffness
+    
+    // Initialize nodes with proper mass and position
     for (let i = 0; i < numNodes; i++) {
       const node = nodes.at(i);
       const t = i / (numNodes - 1);
@@ -245,32 +252,33 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       node.set_m_q(pos);
       node.set_m_v(new physics.btVector3(0, 0, 0));
       
-      // Set mass for nodes
+      // Set mass for nodes with smoother distribution
       if (i === 0) {
         node.set_m_im(0);  // Frame node is completely fixed
       } else if (i === numNodes - 1) {
         node.set_m_im(1.0);  // Ball node has normal mass
       } else {
-        node.set_m_im(0.5);  // Internal nodes are lighter for better behavior
+        // Gradually increase mass towards the ball end
+        const massFactor = i / (numNodes - 1);
+        node.set_m_im(0.3 + (massFactor * 0.7));  // Mass increases from 0.3 to 1.0
+      }
+      
+      // Create internal links between nodes
+      if (i > 0) {
+        try {
+          const success = rope.appendLink(i - 1, i);
+          if (success) {
+            anchoringStatus.internalLinks.count++;
+          }
+        } catch (error) {
+          console.warn(`Failed to create internal link ${i}:`, error.message);
+        }
       }
     }
     
-    // Add to physics world first
+    // Add to physics world
     physicsWorld.addSoftBody(rope);
     
-    // Create anchors after adding to world
-    console.log("Attempting to create anchors...");
-    
-    // Debug frame body
-    console.log("Frame body details:", {
-      isStatic: (frameBody.getCollisionFlags() & 1) !== 0,
-      position: {
-        x: frameBody.getWorldTransform().getOrigin().x(),
-        y: frameBody.getWorldTransform().getOrigin().y(),
-        z: frameBody.getWorldTransform().getOrigin().z()
-      }
-    });
-
     // Handle frame anchor
     try {
       const firstNode = rope.get_m_nodes().at(0);
@@ -280,28 +288,9 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       firstNode.set_m_x(framePos);
       firstNode.set_m_q(framePos);
       firstNode.set_m_v(new physics.btVector3(0, 0, 0));
+      firstNode.set_m_im(0);  // Ensure node is fixed
       
-      // Consider frame anchor successful since we've fixed the node
-      let frameAnchorSuccess = true;
-      
-      console.log("Manual frame anchor creation result:", {
-        nodePosition: {
-          x: firstNode.get_m_x().x(),
-          y: firstNode.get_m_x().y(),
-          z: firstNode.get_m_x().z()
-        },
-        framePosition: {
-          x: framePos.x(),
-          y: framePos.y(),
-          z: framePos.z()
-        }
-      });
-      
-      if (!frameAnchorSuccess) {
-        console.error("Failed to create frame anchor");
-        physicsWorld.removeSoftBody(rope);
-        return null;
-      }
+      anchoringStatus.positionBased.frame = true;
       
       // Handle ball anchor
       console.log("Creating ball anchor...");
@@ -313,27 +302,28 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       lastNode.set_m_q(ballPos);
       lastNode.set_m_v(new physics.btVector3(0, 0, 0));
       
-      // Try to create a soft connection to the ball
-      let ballAnchorSuccess = true;
+      anchoringStatus.positionBased.ball = true;
       
-      console.log("Ball anchor creation result:", {
-        nodePosition: {
-          x: lastNode.get_m_x().x(),
-          y: lastNode.get_m_x().y(),
-          z: lastNode.get_m_x().z()
+      // Log anchoring status summary
+      console.log("Rope anchoring status:", {
+        positionBased: {
+          frame: anchoringStatus.positionBased.frame ? "✓" : "✗",
+          ball: anchoringStatus.positionBased.ball ? "✓" : "✗"
         },
-        ballPosition: {
-          x: ballPos.x(),
-          y: ballPos.y(),
-          z: ballPos.z()
+        internalLinks: {
+          status: `${anchoringStatus.internalLinks.count}/${anchoringStatus.internalLinks.total}`,
+          percentage: Math.round((anchoringStatus.internalLinks.count / anchoringStatus.internalLinks.total) * 100) + "%"
         }
       });
-
-      if (ballAnchorSuccess) {
-        // Store the rope if successful
+      
+      // Store the rope if anchoring succeeded
+      if (anchoringStatus.positionBased.frame && anchoringStatus.positionBased.ball) {
         softBodies.push(rope);
-        console.log("Successfully created rope with both anchors");
         return rope;
+      } else {
+        console.error("Position-based anchoring failed");
+        physicsWorld.removeSoftBody(rope);
+        return null;
       }
       
     } catch (error) {
@@ -354,21 +344,31 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
 
 // Clear all soft bodies
 export function clearSoftBodies() {
-  if (!getPhysicsWorld()) return;
+  const physics = getPhysics();
+  const physicsWorld = getPhysicsWorld();
   
-  // Remove each soft body from physics world
-  for (const softBody of softBodies) {
-    if (softBody) {
-      try {
-        getPhysicsWorld().removeSoftBody(softBody);
-      } catch (error) {
-        console.error("Error removing soft body:", error);
-      }
+  if (!physics || !physicsWorld) return;
+  
+  softBodies.forEach(rope => {
+    // Clean up constraints first if they exist
+    if (rope.userData && rope.userData.constraints) {
+      rope.userData.constraints.forEach(constraint => {
+        try {
+          physicsWorld.removeConstraint(constraint);
+        } catch (error) {
+          console.warn("Failed to remove constraint during cleanup:", error);
+        }
+      });
     }
-  }
+    
+    try {
+      physicsWorld.removeSoftBody(rope);
+    } catch (error) {
+      console.warn("Failed to remove soft body during cleanup:", error);
+    }
+  });
   
-  // Clear arrays
-  softBodies = [];
+  softBodies.length = 0;
   nodePositions = [];
   anchorPositions = [];
 }
@@ -524,6 +524,25 @@ function isValidPosition(pos) {
     return isFinite(x) && isFinite(y) && isFinite(z) && 
            !isNaN(x) && !isNaN(y) && !isNaN(z);
   } catch (e) {
+    return false;
+  }
+}
+
+// Add this helper function at the bottom of the file
+function isValidNode(node) {
+  if (!node) return false;
+  try {
+    // Check if node has required methods
+    if (typeof node.get_m_x !== 'function' || 
+        typeof node.get_m_q !== 'function' || 
+        typeof node.get_m_v !== 'function') {
+      return false;
+    }
+    
+    // Check if node position is valid
+    const pos = node.get_m_x();
+    return isValidPosition(pos);
+  } catch (error) {
     return false;
   }
 } 
