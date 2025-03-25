@@ -1,33 +1,51 @@
-// Ball settings
-ball: {
-  mass: 1.5,            // Reduced mass for better stability
-  restitution: 0.8,     // Reduced bounciness
-  friction: 0.3,        // Increased friction
-  linearDamping: 0.2,   // Increased damping
-  angularDamping: 0.2,  // Increased damping
-  radius: 0.5
-},
-
-// Frame settings
-frame: {
-  mass: 0,  // Static body
-  restitution: 0.5,  // Reduced bounciness
-  friction: 0.8      // Increased friction
-},
-
-// Soft body settings (if supported)
-softBody: {
-  enabled: true,
-  segmentsPerString: 4,     // Keep reduced segments
-  mass: 0.01,              // Further reduced mass
-  damping: 0.4,            // Increased damping
-  lift: 0.005,             // Minimal lift
-  pressure: 5,             // Reduced pressure
-  volumeConservation: 2,   // Reduced for more flexibility
-  dynamicFriction: 0.5,    // Increased friction
-  poseMatching: 0.8,       // Increased pose matching for stability
-  contactHardness: 0.5,    // Reduced for softer contacts
-  kineticHardness: 0.4,    // Reduced for smoother movement
-  softHardness: 0.4,       // Reduced for smoother movement
-  maxVolume: 1.0
-} 
+// Physics configuration settings
+export const physicsConfig = {
+  // World settings
+  gravityConstant: -9.8,
+  timeStep: 1/120,
+  maxSubSteps: 10,
+  
+  // Ball settings
+  ball: {
+    mass: 2,
+    restitution: 0.95,
+    friction: 0.1,
+    linearDamping: 0.1,
+    angularDamping: 0.1,
+    radius: 0.5
+  },
+  
+  // Frame settings
+  frame: {
+    mass: 0,  // Static body
+    restitution: 0.7,
+    friction: 0.5
+  },
+  
+  // String settings
+  string: {
+    segments: 8,
+    mass: 0.01,
+    radius: 0.03,
+    restitution: 0.1,
+    friction: 0.9,
+    damping: 0.9
+  },
+  
+  // Soft body settings (if supported)
+  softBody: {
+    enabled: true,
+    segmentsPerString: 8,
+    mass: 0.1,
+    damping: 0.1,
+    lift: 0.1,
+    pressure: 50,
+    volumeConservation: 20,
+    dynamicFriction: 0.2,
+    poseMatching: 0.2,
+    contactHardness: 1.0,
+    kineticHardness: 0.8,
+    softHardness: 1.0,
+    maxVolume: 1.0
+  }
+}; 
