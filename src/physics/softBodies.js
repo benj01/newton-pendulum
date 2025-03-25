@@ -192,26 +192,11 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       return null;
     }
 
-    // Debug rope object
-    console.log("Rope object details:", {
-      type: rope.constructor.name,
-      methods: Object.getOwnPropertyNames(rope.__proto__),
-      hasAppendAnchor: typeof rope.appendAnchor === 'function',
-      properties: Object.keys(rope)
-    });
-
-    // Try to get the actual appendAnchor function
-    const appendAnchorFn = rope.appendAnchor;
-    console.log("AppendAnchor function:", {
-      type: typeof appendAnchorFn,
-      toString: appendAnchorFn ? appendAnchorFn.toString() : 'undefined',
-      isWrapped: appendAnchorFn && appendAnchorFn.toString().includes('wrapped')
-    });
-
-    // Get nodes and initialize them
+    // Get nodes and count
     const nodes = rope.get_m_nodes();
     const numNodes = nodes.size();
-    
+
+    // Log basic rope creation success
     console.log(`Created rope with ${numNodes} nodes`);
     
     // Initialize node positions and properties
@@ -236,10 +221,40 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
     sbConfig.set_kDF(0.2);                // Maintain dynamic friction
     sbConfig.set_kMT(0.2);                // Maintain pose matching
     
-    // Set material properties for better bending behavior
-    rope.get_m_materials().at(0).set_m_kLST(0.8);  // Linear stiffness
-    rope.get_m_materials().at(0).set_m_kAST(0.8);  // Angular stiffness
-    rope.get_m_materials().at(0).set_m_kVST(0.8);  // Volume stiffness
+    // Enhanced material configuration for better connectivity
+    const material = rope.get_m_materials().at(0);
+    material.set_m_kLST(1.0);  // Increased linear stiffness for stronger connections
+    material.set_m_kAST(1.0);  // Increased angular stiffness
+    material.set_m_kVST(1.0);  // Increased volume stiffness
+    
+    // Add explicit connectivity using material properties
+    try {
+      console.log("Generating internal connections...");
+      
+      // Generate clusters for better stability
+      const numClusters = rope.generateClusters(8, 512);
+      console.log(`Generated ${numClusters} clusters`);
+      
+      // Generate bending constraints
+      const bendingConstraints = rope.generateBendingConstraints(2);
+      console.log(`Generated bending constraints with distance ${2}`);
+      
+      // Manually create sequential links if needed
+      let linkCount = 0;
+      
+      for (let i = 0; i < nodes.size() - 1; i++) {
+        if (rope.appendLink(i, i + 1, material)) {
+          linkCount++;
+        }
+      }
+      console.log(`Created ${linkCount} sequential links`);
+      
+      // Update anchoring status
+      anchoringStatus.internalLinks.count = linkCount;
+      
+    } catch (error) {
+      console.warn("Failed to configure internal connections:", error);
+    }
     
     // Initialize nodes with proper mass and position
     for (let i = 0; i < numNodes; i++) {
@@ -261,18 +276,6 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
         // Gradually increase mass towards the ball end
         const massFactor = i / (numNodes - 1);
         node.set_m_im(0.3 + (massFactor * 0.7));  // Mass increases from 0.3 to 1.0
-      }
-      
-      // Create internal links between nodes
-      if (i > 0) {
-        try {
-          const success = rope.appendLink(i - 1, i);
-          if (success) {
-            anchoringStatus.internalLinks.count++;
-          }
-        } catch (error) {
-          console.warn(`Failed to create internal link ${i}:`, error.message);
-        }
       }
     }
     

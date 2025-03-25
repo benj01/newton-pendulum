@@ -1,7 +1,7 @@
 // Scene configuration settings
 export const sceneConfig = {
   // Cradle settings
-  numBalls: 5,
+  numBalls: 1,
   ballSpacing: 1.2,
   ropeLength: 2.0,
   ballRadius: 0.5,
