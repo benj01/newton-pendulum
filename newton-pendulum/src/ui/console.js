@@ -85,6 +85,10 @@ export class UserConsole {
           <label>Rope Length:</label>
           <input type="range" min="1" max="4" step="0.1" value="${sceneConfig.ropeLength}" data-setting="ropeLength">
         </div>
+        <div class="setting">
+          <label>Ball Radius:</label>
+          <input type="range" min="0.1" max="1" step="0.1" value="${sceneConfig.ballRadius}" data-setting="ballRadius">
+        </div>
       </div>
       
       <div class="setting-group">
@@ -250,21 +254,19 @@ export class UserConsole {
                 input.type === 'color' ? parseInt(input.value.replace('#', ''), 16) :
                 parseFloat(input.value);
     
-    // Update the appropriate config object
+    // Handle nested properties (e.g., "animation.speed")
     if (setting.includes('.')) {
       const [category, property] = setting.split('.');
       this.updateConfigValue(category, property, value);
     } else {
-      this.updateConfigValue(setting, value);
+      // Handle top-level properties
+      this.updateConfigValue(setting, null, value);
     }
-    
-    // Notify parent of changes
-    this.onSettingsChange();
   }
 
   updateConfigValue(category, property, value) {
+    // Handle nested properties
     if (property) {
-      // Nested property (e.g., "animation.speed")
       if (category === 'animation') {
         sceneConfig.animation[property] = value;
       } else if (category === 'ballMaterial') {
@@ -273,9 +275,15 @@ export class UserConsole {
         visualConfig.frameMaterial[property] = value;
       } else if (category === 'background') {
         visualConfig.background[property] = value;
+      } else if (category === 'frame') {
+        sceneConfig.frame[property] = value;
+      } else if (category === 'camera') {
+        sceneConfig.camera[property] = value;
+      } else if (category === 'lighting') {
+        sceneConfig.lighting[property] = value;
       }
     } else {
-      // Top-level property
+      // Handle top-level properties
       if (sceneConfig[category] !== undefined) {
         sceneConfig[category] = value;
       } else if (physicsConfig[category] !== undefined) {
@@ -284,5 +292,8 @@ export class UserConsole {
         visualConfig[category] = value;
       }
     }
+    
+    // Notify parent of changes
+    this.onSettingsChange();
   }
 } 

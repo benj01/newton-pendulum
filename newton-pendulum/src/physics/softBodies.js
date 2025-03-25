@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { physics, physicsWorld, softBodyHelpers, softBodyWorldInfo } from './core.js';
 import { physicsConfig } from '../config/physics.js';
 
-// Store soft bodies
+// Store soft bodies and their associated objects to prevent garbage collection
 let softBodies = [];
+let nodePositions = [];  // Store btVector3 objects
+let anchorPositions = []; // Store anchor btVector3 objects
 
 // Create soft body strings that will handle the constraints
 export function createStringPhysics(cradle) {
@@ -107,9 +109,10 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
   }
 
   try {
-    // Convert Three.js Vector3 to Ammo.js btVector3
+    // Convert Three.js Vector3 to Ammo.js btVector3 and store them
     const startVec = new physics.btVector3(startPoint.x, startPoint.y, startPoint.z);
     const endVec = new physics.btVector3(endPoint.x, endPoint.y, endPoint.z);
+    anchorPositions.push(startVec, endVec);
     
     // Create rope soft body
     const rope = softBodyHelpers.CreateRope(
@@ -127,6 +130,44 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
     // Create a linear interpolation between start and end points
     const step = 1.0 / (numNodes - 1);
     
+    // Configure rope properties first
+    const sbConfig = rope.get_m_cfg();
+    const softBodyConfig = physicsConfig.softBody;
+    
+    // Set configuration values with proper error handling
+    try {
+      sbConfig.set_kDP(softBodyConfig.damping);
+      sbConfig.set_kLF(softBodyConfig.lift);
+      sbConfig.set_kPR(softBodyConfig.pressure);
+      sbConfig.set_kVC(softBodyConfig.volumeConservation);
+      sbConfig.set_kDF(softBodyConfig.dynamicFriction);
+      sbConfig.set_kMT(softBodyConfig.poseMatching);
+      sbConfig.set_kCHR(softBodyConfig.contactHardness);
+      sbConfig.set_kKHR(softBodyConfig.kineticHardness);
+      sbConfig.set_kSHR(softBodyConfig.softHardness);
+      sbConfig.set_maxvolume(softBodyConfig.maxVolume);
+    } catch (error) {
+      console.error("Error setting soft body configuration:", error);
+      // Use default values if configuration fails
+      sbConfig.set_kDP(0.1);
+      sbConfig.set_kLF(0.1);
+      sbConfig.set_kPR(50);
+      sbConfig.set_kVC(20);
+      sbConfig.set_kDF(0.2);
+      sbConfig.set_kMT(0.2);
+      sbConfig.set_kCHR(1.0);
+      sbConfig.set_kKHR(0.8);
+      sbConfig.set_kSHR(1.0);
+      sbConfig.set_maxvolume(1.0);
+    }
+    
+    // Set initial mass before node initialization
+    rope.setTotalMass(softBodyConfig.mass, false);
+    
+    // Clear previous node positions
+    nodePositions = [];
+    
+    // Initialize nodes with proper positions and masses
     for (let i = 0; i < numNodes; i++) {
       const node = nodes.at(i);
       const t = i * step; // Interpolation factor (0 to 1)
@@ -136,58 +177,52 @@ function createSoftBodyRope(startPoint, endPoint, numSegments, fixedPoints = [0,
       const y = startPoint.y + (endPoint.y - startPoint.y) * t;
       const z = startPoint.z + (endPoint.z - startPoint.z) * t;
       
-      // Set initial position using btVector3
+      // Create and store the position vector to prevent garbage collection
       const pos = new physics.btVector3(x, y, z);
+      nodePositions.push(pos);
+      
       node.set_m_x(pos);
+      node.set_m_q(pos);  // Previous position (for velocity)
       
-      // Also set the previous position (m_q) to the same value to prevent initial velocity
-      node.set_m_q(pos);
-      
-      // Ensure non-zero mass for internal nodes (if they should be simulated)
+      // Set mass for internal nodes
       if (!fixedPoints.includes(i)) {
-        node.set_m_im(1.0 / (physicsConfig.softBody.mass / numNodes));
+        const nodeMass = softBodyConfig.mass / numNodes;
+        node.set_m_im(1.0 / nodeMass);  // Inverse mass
+      } else {
+        node.set_m_im(0);  // Fixed points are massless
       }
     }
-    
-    // Configure rope properties
-    const sbConfig = rope.get_m_cfg();
-    sbConfig.set_kDP(physicsConfig.softBody.damping);             // Damping coefficient
-    sbConfig.set_kLF(physicsConfig.softBody.lift);                // Lift coefficient
-    sbConfig.set_kPR(physicsConfig.softBody.pressure);            // Pressure coefficient
-    sbConfig.set_kVC(physicsConfig.softBody.volumeConservation);  // Volume conservation coefficient
-    sbConfig.set_kDF(physicsConfig.softBody.dynamicFriction);     // Dynamic friction coefficient
-    sbConfig.set_kMT(physicsConfig.softBody.poseMatching);        // Pose matching coefficient
-    sbConfig.set_kCHR(physicsConfig.softBody.contactHardness);    // Rigid contact hardness
-    sbConfig.set_kKHR(physicsConfig.softBody.kineticHardness);    // Kinetic contact hardness
-    sbConfig.set_kSHR(physicsConfig.softBody.softHardness);       // Soft contact hardness
-    sbConfig.set_maxvolume(physicsConfig.softBody.maxVolume);     // Maximum volume ratio
-    
-    // Set mass per node (lower = less stretchiness)
-    rope.setTotalMass(physicsConfig.softBody.mass, false);
     
     // Fix specified points and create anchors
     if (fixedPoints.includes(0) && frameBody) {
       // Anchor to frame - first node
-      rope.setMass(0, 0);              // First point is fixed (massless)
+      const firstNode = nodes.at(0);
+      const firstPos = new physics.btVector3(startPoint.x, startPoint.y, startPoint.z);
+      anchorPositions.push(firstPos);
+      
+      firstNode.set_m_x(firstPos);
+      firstNode.set_m_q(firstPos);
       rope.appendAnchor(0, frameBody, false, 1.0);
     }
     
     if (fixedPoints.includes(1) && ballBody) {
-      // Get the ball's radius for proper attachment point
-      const lastNode = rope.get_m_nodes().at(numSegments - 1);
-      lastNode.set_m_x(new physics.btVector3(
-        endPoint.x,
-        endPoint.y,
-        endPoint.z
-      ));
-      
       // Anchor to ball - last node
-      rope.appendAnchor(numSegments - 1, ballBody, false, 1.0);
+      const lastNode = nodes.at(numNodes - 1);
+      const lastPos = new physics.btVector3(endPoint.x, endPoint.y, endPoint.z);
+      anchorPositions.push(lastPos);
+      
+      lastNode.set_m_x(lastPos);
+      lastNode.set_m_q(lastPos);
+      rope.appendAnchor(numNodes - 1, ballBody, false, 1.0);
     }
     
     // Add rope to the physics world
     physicsWorld.addSoftBody(rope, 1, -1);  // Add to default collision groups
-    rope.setTotalMass(physicsConfig.softBody.mass, true);  // Recompute mass with new configuration
+    
+    // Final mass update to ensure proper distribution
+    rope.setTotalMass(softBodyConfig.mass, true);
+    
+    // Store the rope
     softBodies.push(rope);
     
     return rope;
@@ -212,8 +247,10 @@ export function clearSoftBodies() {
     }
   }
   
-  // Clear array
+  // Clear arrays
   softBodies = [];
+  nodePositions = [];
+  anchorPositions = [];
 }
 
 // Update soft body strings
@@ -234,7 +271,7 @@ export function updateSoftBodyStrings(cradle) {
   for (let i = 0; i < softBodies.length && i < strings.length && i < balls.length; i++) {
     const softBody = softBodies[i];
     const string = strings[i];
-    const ball = balls[i];  // Get the corresponding ball
+    const ball = balls[i];
     
     if (!softBody || !string || !ball) {
       console.warn(`Missing objects for string ${i}`);
@@ -252,12 +289,12 @@ export function updateSoftBodyStrings(cradle) {
       const positions = new Float32Array(numNodes * 3);
       let hasValidPositions = false;
       
-      // Update positions from soft body nodes
+      // Update positions from soft body nodes with validation
       for (let j = 0; j < numNodes; j++) {
         const node = nodes.at(j);
         const pos = node.get_m_x();
         
-        // Check for valid values
+        // Validate position values
         const x = pos.x();
         const y = pos.y();
         const z = pos.z();

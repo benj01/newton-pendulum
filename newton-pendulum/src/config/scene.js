@@ -4,6 +4,7 @@ export const sceneConfig = {
   numBalls: 5,
   ballSpacing: 1.2,
   ropeLength: 2.0,
+  ballRadius: 0.5,
   
   // Frame settings
   frame: {
