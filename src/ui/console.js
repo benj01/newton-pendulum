@@ -41,14 +41,17 @@ export class UserConsole {
     // Scene settings
     const sceneContent = this.createSceneSettings();
     sceneContent.className = 'tab-content active';
+    sceneContent.dataset.tab = 'scene';
     
     // Physics settings
     const physicsContent = this.createPhysicsSettings();
     physicsContent.className = 'tab-content';
+    physicsContent.dataset.tab = 'physics';
     
     // Visual settings
     const visualContent = this.createVisualSettings();
     visualContent.className = 'tab-content';
+    visualContent.dataset.tab = 'visual';
     
     // Add restart button
     const restartBtn = document.createElement('button');
@@ -268,10 +271,38 @@ export class UserConsole {
       </div>
       
       <div class="setting-group">
+        <h3>String Material</h3>
+        <div class="setting">
+          <label>Color:</label>
+          <input type="color" value="#${visualConfig.stringMaterial.color.toString(16).padStart(6, '0')}" data-setting="stringMaterial.color">
+        </div>
+        <div class="setting">
+          <label>Opacity:</label>
+          <input type="range" min="0" max="1" step="0.01" value="${visualConfig.stringMaterial.opacity}" data-setting="stringMaterial.opacity">
+        </div>
+      </div>
+      
+      <div class="setting-group">
         <h3>Background</h3>
         <div class="setting">
           <label>Color:</label>
           <input type="color" value="#${visualConfig.background.color.toString(16).padStart(6, '0')}" data-setting="background.color">
+        </div>
+      </div>
+      
+      <div class="setting-group">
+        <h3>Shadows</h3>
+        <div class="setting">
+          <label>Enabled:</label>
+          <input type="checkbox" ${visualConfig.shadows.enabled ? 'checked' : ''} data-setting="shadows.enabled">
+        </div>
+        <div class="setting">
+          <label>Shadow Bias:</label>
+          <input type="range" min="-0.01" max="0.01" step="0.0001" value="${visualConfig.shadows.bias}" data-setting="shadows.bias">
+        </div>
+        <div class="setting">
+          <label>Normal Bias:</label>
+          <input type="range" min="0" max="0.1" step="0.001" value="${visualConfig.shadows.normalBias}" data-setting="shadows.normalBias">
         </div>
       </div>
     `;
@@ -317,15 +348,21 @@ export class UserConsole {
   }
 
   switchTab(tabName) {
-    // Update tab buttons
+    // Remove active class from all tabs and content
     this.container.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tab === tabName);
+      btn.classList.remove('active');
+    });
+    this.container.querySelectorAll('.tab-content').forEach(content => {
+      content.classList.remove('active');
     });
     
-    // Update content sections
-    this.container.querySelectorAll('.tab-content').forEach(content => {
-      content.classList.toggle('active', content.dataset.tab === tabName);
-    });
+    // Add active class to selected tab and content
+    const selectedTab = this.container.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+    const selectedContent = this.container.querySelector(`.tab-content[data-tab="${tabName}"]`);
+    if (selectedTab && selectedContent) {
+      selectedTab.classList.add('active');
+      selectedContent.classList.add('active');
+    }
   }
 
   handleSettingChange(input) {

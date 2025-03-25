@@ -41,10 +41,7 @@ async function init() {
     }
     
     // Initialize user console
-    userConsole = new UserConsole({
-      onSettingsChange: handleSettingsChange,
-      onRestart: handleRestart
-    });
+    userConsole = new UserConsole(handleSettingsChange, handleRestart);
     
     // Set up event listeners
     setupEventListeners();
@@ -62,24 +59,14 @@ async function init() {
 }
 
 // Handle settings changes from user console
-function handleSettingsChange(settings) {
+function handleSettingsChange() {
   try {
-    // Update scene settings
-    if (settings.scene) {
-      Object.assign(sceneConfig, settings.scene);
-      handleRestart();
-    }
-    
-    // Update physics settings
-    if (settings.physics) {
-      Object.assign(physicsConfig, settings.physics);
-      handleRestart();
-    }
-    
     // Update visual settings
-    if (settings.visual) {
-      Object.assign(visualConfig, settings.visual);
-      updateVisualSettings();
+    updateVisualSettings();
+    
+    // Restart physics if needed
+    if (physicsSystem) {
+      restartPhysics(cradle);
     }
   } catch (error) {
     console.error("Error handling settings change:", error);
