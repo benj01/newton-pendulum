@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# clean
+
+- when you create new code or do a refactoring, make sure to clean up unused code so we don't end up with lots of legacy code

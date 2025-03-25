@@ -1,5 +1,7 @@
 // scene.js - Three.js scene setup and visual elements
 import * as THREE from 'three';
+import { sceneConfig } from './config/scene.js';
+import { visualConfig } from './config/visual.js';
 
 // Scene variables
 let scene, camera, renderer;
@@ -8,43 +10,45 @@ let strings = [];
 let frame;
 let frameObjects = [];
 
-// Scene configuration
-const config = {
-  ballRadius: 0.5,
-  ballDistance: 0.1,
-  numBalls: 7,
-  frameHeight: 12,
-  frameWidth: 0,  // Will be calculated based on balls
-  frameThickness: 0.5
-};
-
 // Store fixed attachment points for strings
 let stringAttachPoints = [];
 
 // Initialize the Three.js scene
 export function initScene() {
   // Create scene
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x444444);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(visualConfig.background.color);
   
   // Create camera
-  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 8, 20);
-  camera.lookAt(0, 5, 0);
+  const { fov, near, far } = sceneConfig.camera;
+  const camera = new THREE.PerspectiveCamera(fov, window.innerWidth / window.innerHeight, near, far);
+  camera.position.set(
+    sceneConfig.camera.position.x,
+    sceneConfig.camera.position.y,
+    sceneConfig.camera.position.z
+  );
+  camera.lookAt(
+    sceneConfig.camera.target.x,
+    sceneConfig.camera.target.y,
+    sceneConfig.camera.target.z
+  );
   
   // Create renderer
-  renderer = new THREE.WebGLRenderer({ 
-    antialias: true
+  const renderer = new THREE.WebGLRenderer({ 
+    antialias: visualConfig.postProcessing.antialias
   });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = visualConfig.shadows.enabled;
+  renderer.shadowMap.type = visualConfig.shadows.type;
+  renderer.shadowMap.bias = visualConfig.shadows.bias;
+  renderer.shadowMap.normalBias = visualConfig.shadows.normalBias;
   
   // Add renderer to document
   document.getElementById('app').appendChild(renderer.domElement);
   
   // Set up lighting
-  setupLighting();
+  setupLighting(scene);
   
   return {
     scene,
@@ -54,167 +58,185 @@ export function initScene() {
 }
 
 // Set up lighting for the scene
-function setupLighting() {
+function setupLighting(scene) {
   // Add ambient light
-  const ambientLight = new THREE.AmbientLight(0x909090);
+  const ambientLight = new THREE.AmbientLight(0xffffff, sceneConfig.lighting.ambient);
   scene.add(ambientLight);
   
   // Add directional light
-  const light = new THREE.DirectionalLight(0xffffff, 1.2);
-  light.position.set(0, 10, 10);
-  light.castShadow = true;
+  const light = new THREE.DirectionalLight(0xffffff, sceneConfig.lighting.directional);
+  light.position.set(
+    sceneConfig.lighting.position.x,
+    sceneConfig.lighting.position.y,
+    sceneConfig.lighting.position.z
+  );
+  light.castShadow = visualConfig.shadows.enabled;
   scene.add(light);
   
-  // Configure shadows
-  light.shadow.camera.left = -10;
-  light.shadow.camera.right = 10;
-  light.shadow.camera.top = 10;
-  light.shadow.camera.bottom = -10;
-  light.shadow.camera.near = 0.1;
-  light.shadow.camera.far = 50;
-  light.shadow.mapSize.width = 1024;
-  light.shadow.mapSize.height = 1024;
-  
-  // Add front light
-  const frontLight = new THREE.DirectionalLight(0xffffff, 0.7);
-  frontLight.position.set(0, 5, 15);
-  scene.add(frontLight);
+  // Configure shadows if enabled
+  if (visualConfig.shadows.enabled) {
+    light.shadow.camera.left = -10;
+    light.shadow.camera.right = 10;
+    light.shadow.camera.top = 10;
+    light.shadow.camera.bottom = -10;
+    light.shadow.camera.near = 0.1;
+    light.shadow.camera.far = 50;
+    light.shadow.mapSize.width = 1024;
+    light.shadow.mapSize.height = 1024;
+  }
 }
 
 // Create the Newton's Cradle visual elements
 export function createCradle() {
+  const cradle = new THREE.Group();
+  
   // Calculate frame size based on balls
-  config.frameWidth = (config.numBalls * (config.ballRadius * 2 + config.ballDistance)) + 4;
+  const frameWidth = (sceneConfig.numBalls * (sceneConfig.ballRadius * 2 + sceneConfig.ballSpacing)) + 4;
   
   // Create frame
-  createFrame();
+  createFrame(cradle, frameWidth);
   
   // Create balls
-  createBalls();
+  createBalls(cradle);
   
   // Create strings
-  createStrings();
+  createStrings(cradle);
   
   // Create floor
-  createFloor();
+  createFloor(cradle);
   
-  return {
-    frame: frameObjects,
-    balls,
-    strings
-  };
+  return cradle;
 }
 
 // Create frame for the cradle
-function createFrame() {
+function createFrame(cradle, frameWidth) {
   const frameMaterial = new THREE.MeshStandardMaterial({
-    color: 0x8b4513,
-    metalness: 0.2,
-    roughness: 0.8
+    color: visualConfig.frameMaterial.color,
+    metalness: visualConfig.frameMaterial.metalness,
+    roughness: visualConfig.frameMaterial.roughness
   });
   
   // Top bar
-  const topBarGeometry = new THREE.BoxGeometry(config.frameWidth, config.frameThickness, config.frameThickness);
+  const topBarGeometry = new THREE.BoxGeometry(
+    frameWidth,
+    sceneConfig.frame.height,
+    sceneConfig.frame.depth
+  );
   const topBar = new THREE.Mesh(topBarGeometry, frameMaterial);
-  topBar.position.set(0, config.frameHeight, 0);
+  topBar.position.set(0, sceneConfig.frame.topBarLength, 0);
   topBar.castShadow = true;
   topBar.receiveShadow = true;
-  scene.add(topBar);
-  frameObjects.push(topBar);
+  topBar.name = 'frame_top';
+  cradle.add(topBar);
   
   // Left leg
-  const legGeometry = new THREE.BoxGeometry(config.frameThickness, config.frameHeight, config.frameThickness);
+  const legGeometry = new THREE.BoxGeometry(
+    sceneConfig.frame.width,
+    sceneConfig.frame.sideBarLength,
+    sceneConfig.frame.depth
+  );
   const leftLeg = new THREE.Mesh(legGeometry, frameMaterial);
-  leftLeg.position.set(-config.frameWidth / 2 + config.frameThickness/2, config.frameHeight / 2, 0);
+  leftLeg.position.set(-frameWidth / 2 + sceneConfig.frame.width/2, sceneConfig.frame.sideBarLength / 2, 0);
   leftLeg.castShadow = true;
   leftLeg.receiveShadow = true;
-  scene.add(leftLeg);
-  frameObjects.push(leftLeg);
+  leftLeg.name = 'frame_left';
+  cradle.add(leftLeg);
   
   // Right leg
   const rightLeg = new THREE.Mesh(legGeometry, frameMaterial);
-  rightLeg.position.set(config.frameWidth / 2 - config.frameThickness/2, config.frameHeight / 2, 0);
+  rightLeg.position.set(frameWidth / 2 - sceneConfig.frame.width/2, sceneConfig.frame.sideBarLength / 2, 0);
   rightLeg.castShadow = true;
   rightLeg.receiveShadow = true;
-  scene.add(rightLeg);
-  frameObjects.push(rightLeg);
+  rightLeg.name = 'frame_right';
+  cradle.add(rightLeg);
   
   // Base
-  const baseGeometry = new THREE.BoxGeometry(config.frameWidth, config.frameThickness, 4);
+  const baseGeometry = new THREE.BoxGeometry(
+    frameWidth,
+    sceneConfig.frame.height,
+    sceneConfig.frame.depth
+  );
   const base = new THREE.Mesh(baseGeometry, frameMaterial);
   base.position.set(0, 0, 0);
   base.receiveShadow = true;
-  scene.add(base);
-  frameObjects.push(base);
+  base.name = 'frame_base';
+  cradle.add(base);
 }
 
 // Create balls for the cradle
-function createBalls() {
+function createBalls(cradle) {
   const ballMaterial = new THREE.MeshStandardMaterial({
-    color: 0xc0c0c0,
-    metalness: 0.7,
-    roughness: 0.2,
+    color: visualConfig.ballMaterial.color,
+    metalness: visualConfig.ballMaterial.metalness,
+    roughness: visualConfig.ballMaterial.roughness,
+    transparent: false,
+    depthTest: true,
+    depthWrite: true
   });
   
-  const totalWidth = config.numBalls * (config.ballRadius * 2 + config.ballDistance);
-  const startX = -totalWidth / 2 + config.ballRadius;
+  const totalWidth = sceneConfig.numBalls * (sceneConfig.ballRadius * 2 + sceneConfig.ballSpacing);
+  const startX = -totalWidth / 2 + sceneConfig.ballRadius;
+  const ballHeight = sceneConfig.frame.sideBarLength * 0.4;
   
-  for (let i = 0; i < config.numBalls; i++) {
-    const ballGeometry = new THREE.SphereGeometry(config.ballRadius, 32, 32);
+  for (let i = 0; i < sceneConfig.numBalls; i++) {
+    const ballGeometry = new THREE.SphereGeometry(sceneConfig.ballRadius, 32, 32);
     const ball = new THREE.Mesh(ballGeometry, ballMaterial);
     
-    const x = startX + i * (config.ballRadius * 2 + config.ballDistance);
-    ball.position.set(x, 3, 0);
+    const x = startX + i * (sceneConfig.ballRadius * 2 + sceneConfig.ballSpacing);
+    ball.position.set(x, ballHeight, 0);
+    ball.name = `ball_${i}`;
     
     ball.castShadow = true;
     ball.receiveShadow = true;
-    scene.add(ball);
-    balls.push(ball);
+    ball.renderOrder = 1; // Ensure balls render after strings
+    cradle.add(ball);
   }
 }
 
 // Create strings for the cradle
-function createStrings() {
-  const stringMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x222222,
-    roughness: 0.5,
-    metalness: 0.2
+function createStrings(cradle) {
+  const stringMaterial = new THREE.LineBasicMaterial({ 
+    color: visualConfig.stringMaterial.color,
+    transparent: visualConfig.stringMaterial.transparent,
+    opacity: visualConfig.stringMaterial.opacity,
+    linewidth: 2
   });
   
-  stringAttachPoints = []; // Clear any existing points
-  strings = []; // Clear existing strings
+  const balls = cradle.children.filter(child => child.name.startsWith('ball_'));
+  const frameTop = cradle.children.find(child => child.name === 'frame_top');
   
   for (let i = 0; i < balls.length; i++) {
     const ball = balls[i];
     
-    // Store the initial attachment point (fixed to frame)
-    const topAttachPoint = new THREE.Vector3(ball.position.x, config.frameHeight, 0);
-    stringAttachPoints.push(topAttachPoint);
+    // Create initial geometry with two points
+    const points = [
+      new THREE.Vector3(ball.position.x, frameTop.position.y, 0),
+      new THREE.Vector3(ball.position.x, ball.position.y + sceneConfig.ballRadius, 0)
+    ];
     
-    // Calculate string length
-    const stringLength = topAttachPoint.y - ball.position.y - config.ballRadius;
+    // Create buffer geometry for the line
+    const stringGeometry = new THREE.BufferGeometry();
     
-    // Create a single cylinder for the string
-    const stringGeometry = new THREE.CylinderGeometry(0.02, 0.02, stringLength, 8);
-    const string = new THREE.Mesh(stringGeometry, stringMaterial);
+    // Create vertices for the line
+    const positions = new Float32Array(points.length * 3);
+    for (let j = 0; j < points.length; j++) {
+      positions[j * 3] = points[j].x;
+      positions[j * 3 + 1] = points[j].y;
+      positions[j * 3 + 2] = points[j].z;
+    }
     
-    // Position the string at its center point
-    string.position.set(
-      ball.position.x,
-      topAttachPoint.y - stringLength/2,
-      0
-    );
+    // Set position attribute
+    stringGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     
-    // No initial rotation needed - the cylinder is already vertical by default
-    
-    scene.add(string);
-    // Keep the array structure for compatibility, but each string is now a single object
-    strings.push([string]);
+    // Create the line
+    const string = new THREE.Line(stringGeometry, stringMaterial);
+    string.name = `string_${i}`;
+    cradle.add(string);
   }
 }
 
 // Create floor for shadows
-function createFloor() {
+function createFloor(cradle) {
   const floorGeometry = new THREE.PlaneGeometry(30, 30);
   const floorMaterial = new THREE.MeshStandardMaterial({
     color: 0xcccccc,
@@ -226,36 +248,32 @@ function createFloor() {
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -2;
   floor.receiveShadow = true;
-  scene.add(floor);
+  floor.name = 'floor';
+  cradle.add(floor);
 }
 
-// This function is now deprecated as we're using soft body physics
-function updateStrings() {
-  // This function is no longer used - string updates are handled by updateSoftBodyStrings in physics.js
-  console.warn('updateStrings is deprecated - using soft body physics instead');
+// Update string positions and rotations
+/* 
+function updateStrings(cradle) {
+  // This function should not be used if softBodies.js is handling string updates
+  // Leaving it as a comment for reference
 }
+*/
 
-// Update scene elements (for animation loop)
+// Update the scene
 export function updateScene() {
-  if (!renderer || !scene || !camera) return;
-  
-  // Update strings to follow balls - This is now handled by updateSoftBodyStrings in physics.js
-  // when soft body physics is available. The main.js file will call the appropriate function.
-  
-  // Render the scene
-  renderer.render(scene, camera);
+  // Don't call updateStrings here, as it will conflict with softBodies.js
+  // You can add other scene updates here if needed
 }
 
 // Handle window resize
 export function onWindowResize(camera, renderer) {
-  if (!camera || !renderer) return;
-  
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Access to scene objects (for debugging and testing)
+// Get scene objects
 export function getSceneObjects() {
   return {
     scene,
@@ -263,6 +281,6 @@ export function getSceneObjects() {
     renderer,
     balls,
     strings,
-    frameObjects
+    frame: frameObjects
   };
 }

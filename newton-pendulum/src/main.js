@@ -1,164 +1,224 @@
 // main.js - Application entry point
 import './style.css';
-import { initScene, createCradle, updateScene, onWindowResize } from './scene.js';
-import { 
-  initPhysics, 
-  createPhysicsBodies, 
-  stepPhysics, 
-  syncPhysicsObjects, 
-  applyImpulse, 
-  updateStringPhysics,
-  updateSoftBodyStrings
-} from './physics.js';
-import { setupControls } from './controls.js';
-import { addInfoText } from './utils.js';
-import { checkAmmoSoftBodySupport } from './checkammo.js';
+import './ui/styles.css';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { initScene, createCradle, updateScene } from './scene.js';
+import { initPhysicsSystem, updatePhysics, applyBallImpulse, cleanupPhysics, restartPhysics } from './physics/index.js';
+import { UserConsole } from './ui/console.js';
+import { sceneConfig, physicsConfig, visualConfig } from './config/index.js';
 
-// Global app state
-let running = false;
-let lastTime = 0;
-let cradle = null;
-let physicsWorld = null;
-let sceneObjects = null;
-let hasSoftBodySupport = false;
+// Global state
+let scene, camera, renderer, controls;
+let cradle;
+let physicsSystem;
+let userConsole;
+let isAnimating = true;
 
 // Initialize the application
 async function init() {
-  console.log('Initializing application...');
-  
-  // Initialize scene first (Three.js)
-  sceneObjects = initScene();
-  
-  // Verify scene initialization
-  if (!sceneObjects || !sceneObjects.camera || !sceneObjects.renderer) {
-    console.error('Failed to initialize scene properly:', sceneObjects);
-    return;
+  try {
+    // Initialize scene
+    ({ scene, camera, renderer, controls } = initScene());
+    
+    // Create visual cradle
+    cradle = createCradle();
+    scene.add(cradle);
+    
+    // Initialize physics system with cradle
+    const success = await initPhysicsSystem(cradle);
+    if (!success) {
+      throw new Error("Failed to initialize physics system");
+    }
+    
+    // Initialize user console
+    userConsole = new UserConsole({
+      onSettingsChange: handleSettingsChange,
+      onRestart: handleRestart
+    });
+    
+    // Set up event listeners
+    setupEventListeners();
+    
+    // Start animation loop
+    animate();
+    
+    // Display soft body support status
+    displaySoftBodyStatus();
+  } catch (error) {
+    console.error("Error initializing application:", error);
+    alert("Failed to initialize application. Please check the console for details.");
   }
-  
-  console.log('Scene initialized:', {
-    camera: sceneObjects.camera,
-    renderer: sceneObjects.renderer,
-    scene: sceneObjects.scene
-  });
-  
-  // Initialize physics (Ammo.js)
-  const physicsInit = await initPhysics();
-  
-  if (!physicsInit) {
-    console.error("Failed to initialize physics");
-    return;
-  }
-  
-  physicsWorld = physicsInit.physicsWorld;
-  const physics = physicsInit.physics;
-  
-  // Store soft body support flag
-  hasSoftBodySupport = physicsInit.hasSoftBodySupport;
-  console.log("Soft body support:", hasSoftBodySupport);
-  
-  // Create cradle objects both visually and in physics
-  cradle = createCradle();
-  createPhysicsBodies(cradle);
-  
-  // Setup controls and event listeners - Simplified for ball interaction only
-  console.log('Setting up ball interaction controls...');
-  setupControls(
-    sceneObjects.camera,
-    sceneObjects.renderer,
-    sceneObjects.scene,
-    physicsWorld,
-    physics,
-    startAnimation
-  );
-  
-  // Set up window resize handler
-  window.addEventListener('resize', () => onWindowResize(sceneObjects.camera, sceneObjects.renderer));
-  
-  // Add UI elements
-  addInfoText();
-  
-  // Set up fixed camera - since we removed camera controls
-  setupFixedCamera();
-  
-  // Display soft body status on screen
-  displaySoftBodyStatus(hasSoftBodySupport);
-  
-  // Start animation loop
-  running = true;
-  lastTime = performance.now();
-  animate();
 }
 
-// Setup a fixed camera position since we removed camera controls
-function setupFixedCamera() {
-  if (sceneObjects && sceneObjects.camera) {
-    // Position the camera at a good vantage point
-    sceneObjects.camera.position.set(0, 8, 20);
-    sceneObjects.camera.lookAt(0, 5, 0);
-    sceneObjects.camera.updateProjectionMatrix();
+// Handle settings changes from user console
+function handleSettingsChange(settings) {
+  try {
+    // Update scene settings
+    if (settings.scene) {
+      Object.assign(sceneConfig, settings.scene);
+      handleRestart();
+    }
+    
+    // Update physics settings
+    if (settings.physics) {
+      Object.assign(physicsConfig, settings.physics);
+      handleRestart();
+    }
+    
+    // Update visual settings
+    if (settings.visual) {
+      Object.assign(visualConfig, settings.visual);
+      updateVisualSettings();
+    }
+  } catch (error) {
+    console.error("Error handling settings change:", error);
+  }
+}
+
+// Handle scene restart
+async function handleRestart() {
+  try {
+    // Clean up existing physics
+    cleanupPhysics();
+    
+    // Remove existing cradle from scene
+    scene.remove(cradle);
+    
+    // Create new cradle with updated settings
+    cradle = createCradle();
+    scene.add(cradle);
+    
+    // Reinitialize physics system with new cradle
+    const success = await initPhysicsSystem(cradle);
+    if (!success) {
+      throw new Error("Failed to reinitialize physics system");
+    }
+  } catch (error) {
+    console.error("Error restarting scene:", error);
+    alert("Failed to restart scene. Please check the console for details.");
+  }
+}
+
+// Update visual settings
+function updateVisualSettings() {
+  try {
+    // Update renderer settings
+    renderer.setClearColor(visualConfig.background.color);
+    renderer.shadowMap.enabled = visualConfig.shadows.enabled;
+    renderer.shadowMap.type = visualConfig.shadows.type;
+    renderer.shadowMap.bias = visualConfig.shadows.bias;
+    renderer.shadowMap.normalBias = visualConfig.shadows.normalBias;
+    
+    // Update post-processing if enabled
+    if (visualConfig.postProcessing.enabled) {
+      // TODO: Implement post-processing effects
+    }
+    
+    // Update materials
+    if (cradle) {
+      cradle.traverse((object) => {
+        if (object.isMesh) {
+          if (object.name.includes('ball')) {
+            object.material = new THREE.MeshStandardMaterial(visualConfig.ballMaterial);
+          } else if (object.name.includes('frame')) {
+            object.material = new THREE.MeshStandardMaterial(visualConfig.frameMaterial);
+          } else if (object.name.includes('string')) {
+            object.material = new THREE.MeshBasicMaterial(visualConfig.stringMaterial);
+          }
+        }
+      });
+    }
+  } catch (error) {
+    console.error("Error updating visual settings:", error);
+  }
+}
+
+// Set up event listeners
+function setupEventListeners() {
+  // Window resize
+  window.addEventListener('resize', onWindowResize, false);
+  
+  // Mouse click for impulse
+  window.addEventListener('click', onMouseClick, false);
+  
+  // Space key to pause/resume
+  window.addEventListener('keydown', (event) => {
+    if (event.code === 'Space') {
+      isAnimating = !isAnimating;
+    }
+  });
+}
+
+// Handle window resize
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// Handle mouse click for impulse
+function onMouseClick(event) {
+  if (!isAnimating) return;
+  
+  // Calculate mouse position in normalized device coordinates
+  const mouse = new THREE.Vector2();
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  
+  // Create raycaster
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  
+  // Find intersected objects
+  const intersects = raycaster.intersectObjects(cradle.children, true);
+  
+  // Apply impulse to first intersected ball
+  for (const intersect of intersects) {
+    if (intersect.object.name.includes('ball')) {
+      const ballIndex = parseInt(intersect.object.name.split('_')[1]);
+      const impulse = new THREE.Vector3(0, physicsConfig.impulse, 0);
+      applyBallImpulse(ballIndex, impulse);
+      break;
+    }
   }
 }
 
 // Animation loop
 function animate() {
-  if (!running) return;
-  
   requestAnimationFrame(animate);
   
-  const time = performance.now();
-  const deltaTime = (time - lastTime) / 1000;
-  lastTime = time;
-  
-  // Cap delta time to avoid large time steps
-  const cappedDelta = Math.min(deltaTime, 0.2);
-  
-  // Step physics simulation
-  stepPhysics(cappedDelta);
-  
-  // Sync physics with visual objects
-  syncPhysicsObjects();
-  
-  // Update string physics (use soft body or fallback to rigid body)
-  if (hasSoftBodySupport) {
-    updateSoftBodyStrings(cradle);
-  } else {
-    updateStringPhysics(cradle);
+  if (isAnimating) {
+    // Update physics
+    updatePhysics(cradle);
+    
+    // Update scene
+    updateScene();
+    
+    // Update controls
+    controls.update();
   }
   
-  // Update and render scene
-  updateScene();
-}
-
-// Start the animation by applying impulse to first ball
-function startAnimation() {
-  if (cradle && cradle.balls.length > 0) {
-    // Apply impulse to first ball (-5 in x direction)
-    applyImpulse(0, { x: -10, y: 0, z: 0 });
-  }
+  // Render scene
+  renderer.render(scene, camera);
 }
 
 // Display soft body support status
-function displaySoftBodyStatus(supported) {
-  const statusDiv = document.createElement('div');
-  statusDiv.id = 'softbody-status';
-  statusDiv.style.position = 'absolute';
-  statusDiv.style.top = '40px';
-  statusDiv.style.width = '100%';
-  statusDiv.style.textAlign = 'center';
-  statusDiv.style.color = supported ? '#44ff44' : '#ff4444';
-  statusDiv.style.fontFamily = 'system-ui, sans-serif';
-  statusDiv.style.padding = '5px';
-  statusDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-  statusDiv.style.zIndex = '100';
+function displaySoftBodyStatus() {
+  const status = document.createElement('div');
+  status.style.position = 'fixed';
+  status.style.top = '10px';
+  status.style.left = '10px';
+  status.style.color = '#000';
+  status.style.fontFamily = 'Arial, sans-serif';
+  status.style.fontSize = '14px';
+  status.style.zIndex = '1000';
   
-  statusDiv.textContent = supported ? 
-    "Soft Body Physics: Enabled (Using Soft Ropes)" : 
-    "Soft Body Physics: Not Available (Using Rigid Body Fallback)";
+  const hasSoftBodySupport = physicsSystem && physicsSystem.stringPhysics && physicsSystem.stringPhysics.softBodies;
+  status.textContent = `Soft Body Support: ${hasSoftBodySupport ? 'Enabled' : 'Disabled'}`;
   
-  document.body.appendChild(statusDiv);
+  document.body.appendChild(status);
 }
 
-// checkAmmoSoftBodySupport();
-
-// Initialize application
+// Start the application
 init();
