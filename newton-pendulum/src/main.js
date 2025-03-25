@@ -1,9 +1,10 @@
 // main.js - Application entry point
 import './style.css';
 import { initScene, createCradle, updateScene, onWindowResize } from './scene.js';
-import { initPhysics, createPhysicsBodies, stepPhysics, syncPhysicsObjects, applyImpulse } from './physics.js';
+import { initPhysics, createPhysicsBodies, stepPhysics, syncPhysicsObjects, applyImpulse, updateStringPhysics } from './physics.js';
 import { setupControls } from './controls.js';
 import { addInfoText } from './utils.js';
+import { checkAmmoSoftBodySupport } from './checkammo.js';
 
 // Global app state
 let running = false;
@@ -115,6 +116,8 @@ function startAnimation() {
     applyImpulse(0, { x: -10, y: 0, z: 0 });
   }
 }
+
+// checkAmmoSoftBodySupport();
 
 // Initialize application
 init();

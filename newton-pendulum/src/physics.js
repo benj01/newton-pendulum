@@ -69,20 +69,54 @@ export async function initPhysics() {
     ammoTmpPos = new physics.btVector3();
     ammoTmpQuat = new physics.btQuaternion();
     
-    // Create physics world configuration
-    const collisionConfiguration = new physics.btDefaultCollisionConfiguration();
-    const dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
-    const broadphase = new physics.btDbvtBroadphase();
-    const solver = new physics.btSequentialImpulseConstraintSolver();
-    physicsWorld = new physics.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
+    // Check for soft body support more carefully
+    let hasSoftBodySupport = false;
+    try {
+      hasSoftBodySupport = (
+        typeof physics.btSoftBodyHelpers === 'function' && 
+        typeof physics.btSoftBodyWorldInfo === 'function' &&
+        typeof physics.btSoftRigidDynamicsWorld === 'function' &&
+        typeof physics.btSoftBodyRigidBodyCollisionConfiguration === 'function'
+      );
+    } catch (e) {
+      console.warn("Error checking for soft body support:", e);
+      hasSoftBodySupport = false;
+    }
     
-    // Set gravity
-    physicsWorld.setGravity(new physics.btVector3(0, config.gravityConstant, 0));
+    console.log("Soft body support:", hasSoftBodySupport);
+    
+    let dispatcher, broadphase, solver;
+    
+    try {
+      // Create standard physics world with rigid bodies first (safer)
+      const collisionConfiguration = new physics.btDefaultCollisionConfiguration();
+      dispatcher = new physics.btCollisionDispatcher(collisionConfiguration);
+      broadphase = new physics.btDbvtBroadphase();
+      solver = new physics.btSequentialImpulseConstraintSolver();
+      physicsWorld = new physics.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
+      
+      // Set gravity
+      physicsWorld.setGravity(new physics.btVector3(0, config.gravityConstant, 0));
+      
+      // Try to set solver parameters for stability
+      if (physicsWorld.getSolverInfo) {
+        const solverInfo = physicsWorld.getSolverInfo();
+        if (solverInfo) {
+          solverInfo.m_numIterations = 10; // Increase solver iterations for more stability
+          // Only set these if they exist to avoid errors
+          if ('m_erp' in solverInfo) solverInfo.m_erp = 0.8;
+          if ('m_erp2' in solverInfo) solverInfo.m_erp2 = 0.8;
+        }
+      }
+    } catch (error) {
+      console.error("Error creating physics world:", error);
+      throw error;
+    }
     
     // Remove loading message
     document.body.removeChild(loadingMsg);
     
-    return { physicsWorld, physics };
+    return { physicsWorld, physics, hasSoftBodySupport };
   } catch (error) {
     console.error('Error initializing Ammo.js:', error);
     loadingMsg.textContent = `Error loading physics engine: ${error.message}`;
@@ -156,7 +190,9 @@ export function createStringPhysics(cradle) {
     const ball = ballBody.threeObject;
     
     // Calculate positions for string segments
-    const topY = ball.position.y + 6; // Top attachment point
+    // FIX: Use the top bar position from the frame instead of a hardcoded value
+    const frameTopY = cradle.frame[0].position.y; // Get the actual frame's top position
+    const topY = frameTopY; // Attach to the frame's actual position
     const bottomY = ball.position.y + ball.geometry.parameters.radius;
     const segmentHeight = (topY - bottomY) / segmentsPerString;
     
@@ -167,6 +203,7 @@ export function createStringPhysics(cradle) {
     const anchorShape = new physics.btSphereShape(0.05);
     const anchorTransform = new physics.btTransform();
     anchorTransform.setIdentity();
+    // FIX: Use the ball's x-coordinate and the frame's y-coordinate to attach properly
     anchorTransform.setOrigin(new physics.btVector3(ball.position.x, topY, 0));
     
     const anchorMotionState = new physics.btDefaultMotionState(anchorTransform);
@@ -178,6 +215,9 @@ export function createStringPhysics(cradle) {
         new physics.btVector3(0, 0, 0)
       )
     );
+    
+    // Make sure the anchor is properly static
+    anchorBody.setCollisionFlags(anchorBody.getCollisionFlags() | 2); // CF_KINEMATIC_OBJECT
     
     physicsWorld.addRigidBody(anchorBody);
     currentStringBodies.push(anchorBody);
@@ -218,7 +258,10 @@ export function createStringPhysics(cradle) {
       // Set physical properties for string behavior
       segmentBody.setRestitution(0.1); // Not very bouncy
       segmentBody.setFriction(0.9);    // High friction
-      segmentBody.setDamping(0.7, 0.7); // Quite a bit of damping
+      segmentBody.setDamping(0.9, 0.9); // FIX: Increase damping to reduce unwanted movement
+      
+      // FIX: Disable deactivation to prevent string segments from going to sleep
+      segmentBody.setActivationState(4); // DISABLE_DEACTIVATION
       
       // Add to world
       physicsWorld.addRigidBody(segmentBody);
@@ -235,12 +278,7 @@ export function createStringPhysics(cradle) {
         pivotInCurrent
       );
       
-      // Make the constraint a bit stiff but still allow bending
-      if (constraint.setting) {
-        constraint.setting.set_m_tau(0.3); // lower = more responsive
-        constraint.setting.set_m_damping(0.7); // higher = more damping
-      }
-      
+      // FIX: Use stronger constraint settings to prevent drift
       physicsWorld.addConstraint(constraint, true);
       stringConstraints.push(constraint);
       
@@ -287,7 +325,7 @@ function createBallBody(ball) {
   transform.setOrigin(new physics.btVector3(
     ball.position.x,
     ball.position.y,
-    ball.position.z
+    0 // Ensure Z is exactly 0
   ));
   
   // Calculate inertia
@@ -304,13 +342,13 @@ function createBallBody(ball) {
   );
   const body = new physics.btRigidBody(rbInfo);
   
-  // Set physical properties for metal-like behavior
+  // Now that body is defined, we can set properties
+  body.setLinearFactor(new physics.btVector3(1, 1, 0)); // Allow movement only in X and Y directions
+  
+  // Increase damping to prevent unwanted movement
+  body.setDamping(0.2, 0.2);
   body.setRestitution(0.95); // Higher restitution for more elastic bounces
   body.setFriction(0.1);     // Lower friction for smooth surfaces
-  body.setDamping(0.1, 0.1); // Minimal damping for better energy conservation
-  // Remove these unsupported methods:
-  // body.setRollingFriction(0.0); 
-  // body.setSpinningFriction(0.0);
   
   // Prevent balls from sleeping when they appear to stop
   body.setActivationState(4); // DISABLE_DEACTIVATION

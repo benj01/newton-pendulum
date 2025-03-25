@@ -7,7 +7,17 @@
     <title>Newton's Cradle Simulation</title>
     <meta name="description" content="Interactive 3D Newton's Cradle physics simulation using Three.js and Ammo.js" />
     <!-- Load Ammo.js first -->
-    <script src="https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/ammo.js"></script>
+    <script>
+      // WebAssembly needs to know where to find the .wasm file
+      var Ammo = Ammo || {};
+      Ammo.locateFile = function(path) {
+        if (path.endsWith('.wasm')) {
+          return '/lib/ammo.wasm.wasm';
+        }
+        return path;
+      };
+    </script>
+    <script src="/lib/ammo.wasm.js"></script>
   </head>
   <body>
     <div id="app"></div>
