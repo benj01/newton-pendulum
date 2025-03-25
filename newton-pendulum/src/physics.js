@@ -151,9 +151,9 @@ function createBallBody(ball) {
   const body = new physics.btRigidBody(rbInfo);
   
   // Set physical properties for metal-like behavior
-  body.setRestitution(0.99); // Higher restitution for more elastic bounces
+  body.setRestitution(0.95); // Higher restitution for more elastic bounces
   body.setFriction(0.1);     // Lower friction for smooth surfaces
-  body.setDamping(0.0, 0.0); // Minimal damping for better energy conservation
+  body.setDamping(0.1, 0.1); // Minimal damping for better energy conservation
   // Remove these unsupported methods:
   // body.setRollingFriction(0.0); 
   // body.setSpinningFriction(0.0);
@@ -292,6 +292,18 @@ export function syncPhysicsObjects() {
     ball.position.set(position.x(), position.y(), position.z());
     ball.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
   }
+}
+
+export function updateStringPhysics() {
+  // For a more physically accurate simulation, you could add
+  // small invisible rigid bodies for each string segment
+  // and connect them with point-to-point constraints
+  
+  // For a simplified approach, we're just updating the visual 
+  // representation based on the ball positions
+  
+  // This function is a placeholder if you want to extend with
+  // full physics for the strings later
 }
 
 // Apply an impulse to a ball

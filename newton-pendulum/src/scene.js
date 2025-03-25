@@ -172,27 +172,47 @@ function createBalls() {
 
 // Store fixed attachment points for strings
 let stringAttachPoints = [];
-
 function createStrings() {
-  const stringMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+  const stringMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x000000,
+    roughness: 0.5,
+    metalness: 0.2
+  });
+  
   stringAttachPoints = []; // Clear any existing points
+  strings = []; // Clear existing strings
+  
+  // Number of segments per string (more segments = more flexible)
+  const segmentsPerString = 8;
   
   for (let i = 0; i < balls.length; i++) {
     const ball = balls[i];
     
     // Store the initial attachment point (fixed to frame)
-    const attachPoint = new THREE.Vector3(ball.position.x, config.frameHeight, 0);
-    stringAttachPoints.push(attachPoint);
+    const topAttachPoint = new THREE.Vector3(ball.position.x, config.frameHeight, 0);
+    stringAttachPoints.push(topAttachPoint);
     
-    const points = [
-      attachPoint.clone(),
-      new THREE.Vector3(ball.position.x, ball.position.y + config.ballRadius, 0)
-    ];
+    // Create a string composed of multiple segments
+    const stringSegments = [];
+    const segmentLength = (topAttachPoint.y - ball.position.y - config.ballRadius) / segmentsPerString;
     
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const string = new THREE.Line(geometry, stringMaterial);
-    scene.add(string);
-    strings.push(string);
+    for (let j = 0; j < segmentsPerString; j++) {
+      // Create a thin cylinder for each segment
+      const segmentGeometry = new THREE.CylinderGeometry(0.03, 0.03, segmentLength, 8);
+      const segment = new THREE.Mesh(segmentGeometry, stringMaterial);
+      
+      // Initial position (will be updated in updateStrings)
+      const yPos = topAttachPoint.y - (segmentLength / 2) - (j * segmentLength);
+      segment.position.set(ball.position.x, yPos, 0);
+      
+      // Rotate the cylinder to be vertical
+      segment.rotation.x = Math.PI / 2;
+      
+      scene.add(segment);
+      stringSegments.push(segment);
+    }
+    
+    strings.push(stringSegments);
   }
 }
 
@@ -214,19 +234,72 @@ function createFloor() {
 
 // Update strings based on ball positions
 function updateStrings() {
+  const tempVec = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  
   for (let i = 0; i < balls.length; i++) {
     const ball = balls[i];
-    const string = strings[i];
-    const attachPoint = stringAttachPoints[i];
+    const stringSegments = strings[i];
+    const topAttachPoint = stringAttachPoints[i];
+    const segmentsCount = stringSegments.length;
     
-    // Update string geometry - using fixed top point and moving bottom point
-    const points = [
-      attachPoint, // Fixed attachment point
-      new THREE.Vector3(ball.position.x, ball.position.y + config.ballRadius, 0)
-    ];
+    // Set ball attach point (bottom of string)
+    const ballAttachPoint = new THREE.Vector3(
+      ball.position.x,
+      ball.position.y + config.ballRadius,
+      ball.position.z
+    );
     
-    string.geometry.dispose();
-    string.geometry = new THREE.BufferGeometry().setFromPoints(points);
+    // Calculate catenary curve or simple bend
+    for (let j = 0; j < segmentsCount; j++) {
+      const segment = stringSegments[j];
+      const t = (j + 0.5) / segmentsCount; // Parametric position along string (0 to 1)
+      
+      // Simple quadratic interpolation for a natural bend
+      // You can replace this with a more sophisticated catenary curve
+      const tempX = topAttachPoint.x * (1 - t) + ballAttachPoint.x * t;
+      const tempY = topAttachPoint.y * (1 - t) + ballAttachPoint.y * t;
+      const tempZ = topAttachPoint.z * (1 - t) + ballAttachPoint.z * t;
+      
+      // Add some sag if the string is not straight vertical
+      const horizontalDisplacement = Math.abs(topAttachPoint.x - ballAttachPoint.x);
+      const sag = 4 * t * (1 - t) * horizontalDisplacement * 0.3;
+      
+      // Set segment position
+      segment.position.set(tempX, tempY - sag, tempZ);
+      
+      // Orient the segment to point to the next point
+      if (j < segmentsCount - 1) {
+        const nextT = (j + 1.5) / segmentsCount;
+        const nextX = topAttachPoint.x * (1 - nextT) + ballAttachPoint.x * nextT;
+        const nextY = topAttachPoint.y * (1 - nextT) + ballAttachPoint.y * nextT;
+        const nextZ = topAttachPoint.z * (1 - nextT) + ballAttachPoint.z * nextT;
+        const nextSag = 4 * nextT * (1 - nextT) * horizontalDisplacement * 0.3;
+        
+        tempVec.set(nextX - tempX, (nextY - nextSag) - (tempY - sag), nextZ - tempZ).normalize();
+      } else {
+        // Last segment, point to ball
+        tempVec.set(
+          ballAttachPoint.x - tempX, 
+          ballAttachPoint.y - (tempY - sag), 
+          ballAttachPoint.z - tempZ
+        ).normalize();
+      }
+      
+      // Apply rotation to segment
+      segment.quaternion.setFromUnitVectors(up, tempVec);
+      
+      // Adjust segment length based on distance to next point
+      if (j < segmentsCount - 1) {
+        const nextSegment = stringSegments[j + 1];
+        const distance = segment.position.distanceTo(nextSegment.position);
+        segment.scale.y = distance / (segment.geometry.parameters.height);
+      } else {
+        // Last segment, use distance to ball
+        const distance = segment.position.distanceTo(ballAttachPoint);
+        segment.scale.y = distance / (segment.geometry.parameters.height);
+      }
+    }
   }
 }
 

@@ -101,6 +101,9 @@ function animate() {
   // Sync physics with visual objects
   syncPhysicsObjects();
   
+  // Update string physics if you implement it
+  // updateStringPhysics();
+  
   // Update and render scene
   updateScene();
 }
