@@ -152,10 +152,13 @@ function selectBall() {
     isDragging = true;
     
     // Set up drag plane aligned with the camera view
+    // // Use a vertical plane perpendicular to camera view for better dragging
+    const cameraDirection = camera.getWorldDirection(new THREE.Vector3());
+    // Create a plane that's aligned with the viewing direction but allows vertical movement
     dragPlane.setFromNormalAndCoplanarPoint(
-      camera.getWorldDirection(dragPlane.normal).negate(),
-      selectedBall.position
-    );
+    new THREE.Vector3(cameraDirection.z, 0, -cameraDirection.x).normalize(),
+    selectedBall.position
+  );
 
     // Set up drag plane aligned with the XY plane (constraining to sideways movement)
     dragPlane.set(new THREE.Vector3(0, 0, 1), 0); // Normal is z-axis, offset is 0
@@ -361,8 +364,13 @@ function createMouseConstraint(ballIndex, position) {
       pivotInMouse
     );
     
-    // Set constraint parameters
-    mouseConstraint.setBreakingImpulseThreshold(3500); // High enough to not break easily
+    // Set constraint parameters - increase the threshold to allow more movement
+    mouseConstraint.setBreakingImpulseThreshold(10000); // Much higher to allow more freedom
+    
+    // Modify constraint settings if available in your Ammo.js version
+    if (mouseConstraint.setting && typeof mouseConstraint.setting.set_m_tau === 'function') {
+      mouseConstraint.setting.set_m_tau(0.3); // Lower for more responsive movement
+    }
     
     // Add constraint to physics world
     physicsWorld.addConstraint(mouseConstraint, true);

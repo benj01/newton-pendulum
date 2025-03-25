@@ -10,9 +10,9 @@ let frameObjects = [];
 
 // Scene configuration
 const config = {
-  ballRadius: 1,
+  ballRadius: 0.5,
   ballDistance: 0.1,
-  numBalls: 5,
+  numBalls: 7,
   frameHeight: 12,
   frameWidth: 0,  // Will be calculated based on balls
   frameThickness: 0.5

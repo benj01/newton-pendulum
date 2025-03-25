@@ -4,11 +4,11 @@ import * as THREE from 'three';
 // Physics configuration
 const config = {
   gravityConstant: -9.8,
-  timeStep: 1/60,
+  timeStep: 1/120,
   maxSubSteps: 10,
-  ballMass: 1,
-  ballRestitution: 0.9,
-  ballFriction: 0.5,
+  ballMass: 2,
+  ballRestitution: 0.95,
+  ballFriction: 0.1,
   ballDamping: 0.1
 };
 
@@ -125,7 +125,7 @@ export function createPhysicsBodies(cradle) {
 function createBallBody(ball) {
   // Create collision shape
   const shape = new physics.btSphereShape(ball.geometry.parameters.radius);
-  shape.setMargin(0.05);
+  shape.setMargin(0.01); // Reduce collision margin for more precise contacts
   
   // Set position
   const transform = new physics.btTransform();
@@ -150,10 +150,16 @@ function createBallBody(ball) {
   );
   const body = new physics.btRigidBody(rbInfo);
   
-  // Set physical properties
-  body.setRestitution(config.ballRestitution);
-  body.setFriction(config.ballFriction);
-  body.setDamping(config.ballDamping, config.ballDamping);
+  // Set physical properties for metal-like behavior
+  body.setRestitution(0.99); // Higher restitution for more elastic bounces
+  body.setFriction(0.1);     // Lower friction for smooth surfaces
+  body.setDamping(0.0, 0.0); // Minimal damping for better energy conservation
+  // Remove these unsupported methods:
+  // body.setRollingFriction(0.0); 
+  // body.setSpinningFriction(0.0);
+  
+  // Prevent balls from sleeping when they appear to stop
+  body.setActivationState(4); // DISABLE_DEACTIVATION
   
   // Store reference to visual object
   body.threeObject = ball;
